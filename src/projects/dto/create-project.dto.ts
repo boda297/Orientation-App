@@ -48,9 +48,7 @@ export class CreateProjectDto {
   @Type(() => Types.ObjectId)
   inventory?: any;
 
-  @IsUrl()
-  @IsNotEmpty()
-  heroImage: string;
+  // heroImage is uploaded via file upload (FileFieldsInterceptor), not in DTO body
 
   @IsMongoId()
   @IsOptional()

@@ -5,11 +5,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Developer, DeveloperDoc } from './entities/developer.entity';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { UpdateDeveloperScriptDto } from './dto/update-developer-project.dto';
+import { S3Service } from 'src/s3/s3.service';
+
 @Injectable()
 export class DeveloperService {
   constructor(
     @InjectModel(Developer.name)
     private developerModel: Model<DeveloperDoc>,
+    private s3Service: S3Service,
   ) {}
 
   async findAllDevelopers() {
@@ -38,8 +41,28 @@ export class DeveloperService {
     });
   }
 
-  async createDeveloper(createDeveloperDto: CreateDeveloperDto) {
-    return await this.developerModel.create(createDeveloperDto);
+  async createDeveloper(
+    createDeveloperDto: CreateDeveloperDto,
+    logo?: Express.Multer.File,
+  ) {
+    // Upload logo to S3 if provided
+    let logoUrl: string | undefined;
+    if (logo) {
+      const { url } = await this.s3Service.uploadFile(logo, 'images');
+      logoUrl = url;
+    }
+
+    // Create developer with S3 URLs
+    const developerData: any = {
+      ...createDeveloperDto,
+    };
+
+    // Add logo URL if uploaded
+    if (logoUrl) {
+      developerData.logo = logoUrl;
+    }
+
+    return await this.developerModel.create(developerData);
   }
 
   async updateDeveloperScript(

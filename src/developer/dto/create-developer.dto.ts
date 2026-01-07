@@ -1,26 +1,9 @@
-import {
-  IsString,
-  IsNotEmpty,
-  IsUrl,
-  IsEmail,
-  IsOptional,
-  IsBoolean,
-  IsObject,
-  ValidateNested,
-} from 'class-validator';
+import { IsString, IsNotEmpty, IsEmail, IsOptional } from 'class-validator';
 
 export class CreateDeveloperDto {
   @IsString()
   @IsNotEmpty()
   name: string;
-
-  @IsUrl()
-  @IsNotEmpty()
-  logo: string;
-
-  @IsUrl()
-  @IsOptional()
-  coverImage?: string;
 
   @IsEmail()
   @IsOptional()
@@ -31,12 +14,10 @@ export class CreateDeveloperDto {
   phone?: string;
 
   @IsString()
-  @IsNotEmpty()
   @IsOptional()
   socialMediaLink?: string;
 
   @IsString()
   @IsNotEmpty()
-  location:string;
-
+  location: string;
 }

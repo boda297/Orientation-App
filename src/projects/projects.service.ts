@@ -7,16 +7,27 @@ import { Project, ProjectDocument } from './entities/project.entity';
 import { User, UserDocument } from 'src/users/entities/user.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { DeveloperService } from 'src/developer/developer.service';
+import {
+  Developer,
+  DeveloperDoc,
+} from 'src/developer/entities/developer.entity';
+import { S3Service } from 'src/s3/s3.service';
 
 @Injectable()
 export class ProjectsService {
   constructor(
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
     private developerService: DeveloperService,
+    private s3Service: S3Service,
   ) {}
 
-  async create(createProjectDto: CreateProjectDto) {
+  async create(
+    createProjectDto: CreateProjectDto,
+    logo?: Express.Multer.File,
+    heroVideo?: Express.Multer.File,
+  ) {
     // Verify developer exists
     const developer = await this.developerService.findOneDeveloper(
       createProjectDto.developer,
@@ -32,37 +43,66 @@ export class ProjectsService {
       .replace(/ /g, '-')
       .replace(/[^a-z0-9-]/g, '');
 
-    // crate project with normalized slug
-    const project = new this.projectModel({
+    // Upload logo to S3 if provided
+    let logoUrl: string | undefined;
+    if (logo) {
+      const { url } = await this.s3Service.uploadFile(logo, 'images');
+      logoUrl = url;
+    }
+
+    // Upload hero video to S3 if provided
+    let heroVideoUrl: string | undefined;
+    if (heroVideo) {
+      const { url } = await this.s3Service.uploadFile(heroVideo, 'episodes');
+      heroVideoUrl = url;
+    }
+
+    if (!heroVideoUrl) {
+      throw new BadRequestException('Hero video is required');
+    }
+
+    // Create project with normalized slug
+    const projectData: any = {
       ...createProjectDto,
       slug,
-    });
+      heroVideoUrl,
+    };
 
-    return project
-      .save()
-      .then((savedProject) => {
-        return {
-          message: 'Project created successfully',
-          project: savedProject,
-        };
-      })
-      .catch((error) => {
-        // Handle duplicate key error (unique constraint violation)
-        if (error.code === 11000) {
-          throw new BadRequestException(
-            'Project with this Title already exists',
-          );
-        }
-        throw new BadRequestException(error.message);
-      });
+    // Add logo URL if uploaded
+    if (logoUrl) {
+      projectData.logoUrl = logoUrl;
+    }
+
+    const project = new this.projectModel(projectData);
+
+    try {
+      // Save the project first
+      const savedProject = await project.save();
+
+      // Push project to developer's projects array
+      await this.developerModel.findByIdAndUpdate(
+        createProjectDto.developer,
+        { $push: { projects: savedProject._id } },
+        { new: true },
+      );
+
+      return {
+        message: 'Project created successfully',
+        project: savedProject,
+      };
+    } catch (error) {
+      // Handle duplicate key error (unique constraint violation)
+      if (error.code === 11000) {
+        throw new BadRequestException('Project with this Title already exists');
+      }
+      throw new BadRequestException(error.message);
+    }
   }
 
   findAll(query: QueryProjectDto) {
     const { developerId, location, status, title, slug, limit, page, sortBy } =
       query;
-    // Exclude soft-deleted projects
     const mongoQuery = this.projectModel.find({ deletedAt: null });
-    // populate developer with developer name
     mongoQuery.populate('developer');
     if (developerId) {
       mongoQuery.where('developer').equals(developerId);
@@ -86,18 +126,15 @@ export class ProjectsService {
       mongoQuery.skip((page - 1) * limit);
     }
     if (sortBy) {
-      // Sort by createdAt for 'newest', or by the specified field
       const sortField = sortBy === 'newest' ? 'createdAt' : sortBy;
       mongoQuery.sort({ [sortField]: -1 });
     } else {
-      // Default sort by newest (createdAt)
       mongoQuery.sort({ createdAt: -1 });
     }
     return mongoQuery.exec();
   }
 
   async findOne(id: Types.ObjectId) {
-    // Find and increment view count atomically
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
@@ -115,52 +152,32 @@ export class ProjectsService {
     if (!updatedProject) {
       throw new BadRequestException('Project not found');
     }
-    // Recalculate trending score after view increment
     await this.calculateTrendingScore(id);
     return updatedProject;
   }
 
-  /**
-   * Calculate trending score based on engagement metrics and time decay
-   * Formula: (views * 1 + saves * 5) / (1 + hours_since_creation / 24)^1.5
-   * This gives more weight to saves and applies time decay to favor recent content
-   */
   async calculateTrendingScore(id: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
     }
-
     const views = project.viewCount || 0;
     const saves = project.saveCount || 0;
-    // createdAt is added by Mongoose timestamps
-    // Use _id.getTimestamp() as fallback if createdAt is not available
     const createdAt = (project as any).createdAt
       ? new Date((project as any).createdAt)
       : new Date(project._id.getTimestamp());
     const now = new Date();
     const hoursSinceCreation =
       (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-
-    // Calculate trending score with time decay
-    // Saves are weighted 5x more than views (saves indicate stronger interest)
-    // Time decay: projects get less trending as they age
     const baseScore = views * 1 + saves * 5;
     const timeDecay = Math.pow(1 + hoursSinceCreation / 24, 1.5);
     const trendingScore = baseScore / timeDecay;
-
-    // Update the trending score
     await this.projectModel.findByIdAndUpdate(id, {
-      trendingScore: Math.round(trendingScore * 100) / 100, // Round to 2 decimal places
+      trendingScore: Math.round(trendingScore * 100) / 100,
     });
-
     return trendingScore;
   }
 
-  /**
-   * Recalculate trending scores for all active projects
-   * Useful for periodic updates via cron job
-   */
   async recalculateAllTrendingScores() {
     const projects = await this.projectModel.find({ deletedAt: null });
     const updates = projects.map((project) =>
@@ -172,10 +189,6 @@ export class ProjectsService {
     };
   }
 
-  /**
-   * Find trending projects sorted by trending score
-   * Returns projects ranked from 1 to limit with position numbers
-   */
   async findTrending(limit: number = 10) {
     const projects = await this.projectModel
       .find({ deletedAt: null })
@@ -183,8 +196,6 @@ export class ProjectsService {
       .sort({ trendingScore: -1 })
       .limit(limit)
       .exec();
-
-    // Add ranking position (1 to limit) to each project
     return projects.map((project, index) => ({
       rank: index + 1,
       ...project.toObject(),
@@ -192,13 +203,10 @@ export class ProjectsService {
   }
 
   async saveProject(id: Types.ObjectId, userId: Types.ObjectId) {
-    // Verify project exists
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
     }
-
-    // Check if project is already saved by user
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
@@ -206,34 +214,25 @@ export class ProjectsService {
     if (user.savedProjects.includes(id)) {
       return { message: 'Project already saved' };
     }
-
-    // Increment save count on project
-    const updatedProject = await this.projectModel.findByIdAndUpdate(
+    await this.projectModel.findByIdAndUpdate(
       id,
       { $inc: { saveCount: 1 } },
       { new: true },
     );
-
-    // Add project to user's saved projects (using $addToSet to avoid duplicates)
     await this.userModel.findByIdAndUpdate(
       userId,
       { $addToSet: { savedProjects: id } },
       { new: true },
     );
-
-    // Recalculate trending score after save increment
     await this.calculateTrendingScore(id);
-
     return { message: 'Project saved successfully' };
   }
 
   async unsaveProject(id: Types.ObjectId, userId: Types.ObjectId) {
-    // Verify project exists
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
     }
-    // Check if project is already saved by user
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new BadRequestException('User not found');
@@ -241,36 +240,26 @@ export class ProjectsService {
     if (!user.savedProjects.includes(id)) {
       throw new BadRequestException('Project not saved');
     }
-
-    // Decrement save count on project
     await this.projectModel.findByIdAndUpdate(
       id,
       { $inc: { saveCount: -1 } },
       { new: true },
     );
-
-    // Remove project from user's saved projects (using $pull to remove single occurrence)
     await this.userModel.findByIdAndUpdate(
       userId,
       { $pull: { savedProjects: id } },
       { new: true },
     );
-
-    // Recalculate trending score after save decrement
     await this.calculateTrendingScore(id);
-
     return { message: 'Project unsaved successfully' };
   }
 
   async update(id: Types.ObjectId, updateProjectDto: UpdateProjectDto) {
-    // If slug is being updated, normalize it
     if (updateProjectDto.title) {
       updateProjectDto.title = updateProjectDto.title
         .toLowerCase()
         .replace(/ /g, '-')
         .replace(/[^a-z0-9-]/g, '');
-
-      // Check if another project with the same slug exists
       const projectWithSameSlug = await this.projectModel.findOne({
         title: updateProjectDto.title,
         _id: { $ne: id },
@@ -279,8 +268,6 @@ export class ProjectsService {
         throw new BadRequestException('Project with this slug already exists');
       }
     }
-
-    // If developerId is being updated, verify developer exists
     if (updateProjectDto.developer) {
       const developer = await this.developerService.findOneDeveloper(
         updateProjectDto.developer,
@@ -289,7 +276,6 @@ export class ProjectsService {
         throw new BadRequestException('Developer not found');
       }
     }
-
     const updatedProject = await this.projectModel
       .findByIdAndUpdate(id, updateProjectDto, {
         new: true,
@@ -303,11 +289,9 @@ export class ProjectsService {
         }
         throw new BadRequestException(error.message);
       });
-
     if (!updatedProject) {
       throw new BadRequestException('Project not found');
     }
-
     return {
       message: 'Project updated successfully',
       project: updatedProject,
@@ -315,17 +299,14 @@ export class ProjectsService {
   }
 
   async remove(id: Types.ObjectId) {
-    // Soft delete by setting deletedAt timestamp
     const deletedProject = await this.projectModel.findByIdAndUpdate(
       id,
       { deletedAt: new Date() },
       { new: true },
     );
-
     if (!deletedProject) {
       throw new BadRequestException('Project not found');
     }
-
     return {
       message: 'Project deleted successfully',
       project: deletedProject,

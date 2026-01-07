@@ -8,11 +8,8 @@ export class Developer extends Document {
   @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop({ required: true })
+  @Prop({ required: true, default: null })
   logo: string;
-
-  @Prop({ required: true })
-  coverImage: string;
 
   @Prop({ required: false })
   email?: string;

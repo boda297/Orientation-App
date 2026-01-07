@@ -7,7 +7,10 @@ import {
   Param,
   Delete,
   UseGuards,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { DeveloperService } from './developer.service';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
@@ -39,8 +42,23 @@ export class DeveloperController {
   @Post()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
-  create(@Body() createDeveloperDto: CreateDeveloperDto) {
-    return this.developerService.createDeveloper(createDeveloperDto);
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'logo', maxCount: 1 },
+    ]),
+  )
+  create(
+    @Body() createDeveloperDto: CreateDeveloperDto,
+    @UploadedFiles()
+    files: {
+      logo?: Express.Multer.File[];
+    },
+  ) {
+    const logo = files?.logo?.[0];
+    return this.developerService.createDeveloper(
+      createDeveloperDto,
+      logo,
+    );
   }
 
   @Patch(':id')

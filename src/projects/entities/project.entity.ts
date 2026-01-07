@@ -11,6 +11,9 @@ export class Project {
   @Prop({ required: true, unique: true, lowercase: true })
   slug: string;
 
+  @Prop({ required: false, default: null })
+  logoUrl?: string;
+
   @Prop({ required: true })
   location: string;
 
@@ -36,7 +39,7 @@ export class Project {
   pdfUrl: Types.ObjectId;
 
   @Prop({ required: true })
-  heroImage: string;
+  heroVideoUrl: string;
 
   @Prop({ type: String, required: false })
   whatsappNumber?: string;

@@ -10,7 +10,10 @@ import {
   Put,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -29,8 +32,32 @@ export class ProjectsController {
   @Post()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
-  createProject(@Body() createProjectDto: CreateProjectDto) {
-    return this.projectsService.create(createProjectDto);
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'logo', maxCount: 1 },
+        { name: 'heroVideo', maxCount: 1 },
+      ],
+      {
+        limits: {
+          fileSize: 1000 * 1024 * 1024, // 1GB max per file
+        },
+      },
+    ),
+  )
+  createProject(
+    @Body() createProjectDto: CreateProjectDto,
+    @UploadedFiles()
+    files?: {
+      logo?: Express.Multer.File[];
+      heroVideo?: Express.Multer.File[];
+    },
+  ) {
+    return this.projectsService.create(
+      createProjectDto,
+      files?.logo?.[0],
+      files?.heroVideo?.[0],
+    );
   }
 
   @Get()
