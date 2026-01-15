@@ -36,7 +36,7 @@ export class EpisodeService {
     const episodeData: any = {
       projectId: createEpisodeDto.projectId,
       title: createEpisodeDto.title,
-      thumbnail: createEpisodeDto.thumbnail || url, // Fallback to episode URL if no thumbnail
+      thumbnail: createEpisodeDto.thumbnail || url, 
       episodeUrl: url,
       episodeOrder: createEpisodeDto.episodeOrder,
       s3Key: key,

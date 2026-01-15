@@ -36,7 +36,7 @@ export class Project {
   inventory: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'File' })
-  pdfUrl: Types.ObjectId;
+  pdf: Types.ObjectId[];
 
   @Prop({ required: true })
   heroVideoUrl: string;

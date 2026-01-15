@@ -27,16 +27,15 @@ export class ReelsService {
     file: Express.Multer.File,
     thumbnail: Express.Multer.File,
   ) {
-    const developer = await this.developerModel.findById(
-      createReelDto.developerId,
-    );
-    if (!developer) {
-      throw new NotFoundException('Developer not found');
-    }
 
     const project = await this.projectModel.findById(createReelDto.projectId);
     if (!project) {
       throw new NotFoundException('Project not found');
+    }
+
+    const developer = await this.developerModel.findById(project.developer);
+    if (!developer) {
+      throw new NotFoundException('Developer not found');
     }
 
     // Upload reel to S3
@@ -54,11 +53,11 @@ export class ReelsService {
       videoUrl: url,
       thumbnail: thumbnailUrl,
       projectId: createReelDto.projectId,
-      developerId: createReelDto.developerId,
+      developerId: developer._id,
       s3Key: key,
     });
     const savedReel = await reel.save();
-    // Push reel to project's reels array
+    // Push reel to project's reels all data array
     await this.projectModel.findByIdAndUpdate(createReelDto.projectId, {
       $push: { reels: savedReel._id },
     });

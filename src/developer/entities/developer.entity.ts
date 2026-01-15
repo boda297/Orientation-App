@@ -8,9 +8,6 @@ export class Developer {
   @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop({ required: true, default: null })
-  logo: string;
-
   @Prop({ required: false })
   email?: string;
 

@@ -18,18 +18,8 @@ export class CreateReelDto {
   title: string;
 
   @IsNotEmpty()
-  videoFile: Express.Multer.File;
-
-  @IsNotEmpty()
-  thumbnailFile: Express.Multer.File;
-
-  @IsNotEmpty()
   @IsMongoId()
   @Type(() => Types.ObjectId)
   projectId: Types.ObjectId;
 
-  @IsNotEmpty()
-  @IsMongoId()
-  @Type(() => Types.ObjectId)
-  developerId: Types.ObjectId;
 }

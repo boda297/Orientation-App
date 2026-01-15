@@ -104,8 +104,9 @@ export class ProjectsService {
       query;
       // Populate developer with name and logoUrl and episodes and reels
     const mongoQuery = this.projectModel.find({ deletedAt: null })
-    mongoQuery.populate('developer');
-    mongoQuery.populate('episodes');
+    mongoQuery.populate('developer' , 'name logoUrl');
+    mongoQuery.populate('episodes' , 'title thumbnail episodeUrl episodeOrder duration');
+    mongoQuery.populate('reels', 'title videoUrl thumbnail');
     if (developerId) {
       mongoQuery.where('developer').equals(developerId);
     }

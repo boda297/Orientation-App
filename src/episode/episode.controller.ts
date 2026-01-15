@@ -23,12 +23,11 @@ import { Roles } from '../roles/roles.decorator';
 import { Role } from '../roles/roles.enum';
 
 @Controller('episode')
-@UseGuards(AuthGuard)
 export class EpisodeController {
   constructor(private readonly episodeService: EpisodeService) {}
 
   @Post()
-  @UseGuards(RolesGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
     FileInterceptor('file', {
@@ -64,7 +63,7 @@ export class EpisodeController {
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, AuthGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   async update(
     @Param() params: MongoIdDto,
@@ -74,7 +73,7 @@ export class EpisodeController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
+  @UseGuards(RolesGuard, AuthGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   async remove(@Param() params: MongoIdDto) {
     return this.episodeService.remove(params.id);
