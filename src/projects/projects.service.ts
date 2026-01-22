@@ -12,6 +12,13 @@ import {
   DeveloperDoc,
 } from 'src/developer/entities/developer.entity';
 import { S3Service } from 'src/s3/s3.service';
+import { Episode, EpisodeDocument } from 'src/episode/entities/episode.entity';
+import { Reel, ReelDocument } from 'src/reels/entities/reel.entity';
+import {
+  Inventory,
+  InventoryDocument,
+} from 'src/files/entities/inventory.entity';
+import { File, FileDocument } from 'src/files/entities/file.entity';
 
 @Injectable()
 export class ProjectsService {
@@ -19,6 +26,11 @@ export class ProjectsService {
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
+    @InjectModel(Episode.name) private episodeModel: Model<EpisodeDocument>,
+    @InjectModel(Reel.name) private reelModel: Model<ReelDocument>,
+    @InjectModel(Inventory.name)
+    private inventoryModel: Model<InventoryDocument>,
+    @InjectModel(File.name) private fileModel: Model<FileDocument>,
     private developerService: DeveloperService,
     private s3Service: S3Service,
   ) {}
@@ -27,6 +39,7 @@ export class ProjectsService {
     createProjectDto: CreateProjectDto,
     logo?: Express.Multer.File,
     heroVideo?: Express.Multer.File,
+    projectThumbnail?: Express.Multer.File,
   ) {
     // Verify developer exists
     const developer = await this.developerService.findOneDeveloper(
@@ -61,17 +74,24 @@ export class ProjectsService {
       throw new BadRequestException('Hero video is required');
     }
 
+    // Upload project thumbnail to S3 if provided
+    let projectThumbnailUrl: string | undefined;
+    if (projectThumbnail) {
+      const { url } = await this.s3Service.uploadFile(
+        projectThumbnail,
+        'images',
+      );
+      projectThumbnailUrl = url;
+    }
+
     // Create project with normalized slug
     const projectData: any = {
       ...createProjectDto,
       slug,
       heroVideoUrl,
+      projectThumbnailUrl,
+      logoUrl,
     };
-
-    // Add logo URL if uploaded
-    if (logoUrl) {
-      projectData.logoUrl = logoUrl;
-    }
 
     const project = new this.projectModel(projectData);
 
@@ -260,7 +280,18 @@ export class ProjectsService {
     return { message: 'Project unsaved successfully' };
   }
 
-  async update(id: Types.ObjectId, updateProjectDto: UpdateProjectDto) {
+  async update(
+    id: Types.ObjectId,
+    updateProjectDto: UpdateProjectDto,
+    logo?: Express.Multer.File,
+    heroVideo?: Express.Multer.File,
+    projectThumbnail?: Express.Multer.File,
+  ) {
+    const project = await this.projectModel.findById(id);
+    if (!project) {
+      throw new BadRequestException('Project not found');
+    }
+
     if (updateProjectDto.title) {
       updateProjectDto.title = updateProjectDto.title
         .toLowerCase()
@@ -282,6 +313,56 @@ export class ProjectsService {
         throw new BadRequestException('Developer not found');
       }
     }
+
+    // Handle logo update
+    if (logo) {
+      // Delete old logo from S3 if it exists
+      if (project.logoUrl) {
+        try {
+          // Extract S3 key from URL
+          const oldKey = this.extractS3KeyFromUrl(project.logoUrl);
+          await this.s3Service.deleteFile(oldKey);
+        } catch (error) {
+          console.error('Failed to delete old logo from S3', error);
+        }
+      }
+      const { url } = await this.s3Service.uploadFile(logo, 'images');
+      updateProjectDto.logoUrl = url;
+    }
+
+    // Handle hero video update
+    if (heroVideo) {
+      // Delete old hero video from S3 if it exists
+      if (project.heroVideoUrl) {
+        try {
+          const oldKey = this.extractS3KeyFromUrl(project.heroVideoUrl);
+          await this.s3Service.deleteFile(oldKey);
+        } catch (error) {
+          console.error('Failed to delete old hero video from S3', error);
+        }
+      }
+      const { url } = await this.s3Service.uploadFile(heroVideo, 'episodes');
+      updateProjectDto.heroVideoUrl = url;
+    }
+
+    // Handle project thumbnail update
+    if (projectThumbnail) {
+      // Delete old thumbnail from S3 if it exists
+      if (project.projectThumbnailUrl) {
+        try {
+          const oldKey = this.extractS3KeyFromUrl(project.projectThumbnailUrl);
+          await this.s3Service.deleteFile(oldKey);
+        } catch (error) {
+          console.error('Failed to delete old thumbnail from S3', error);
+        }
+      }
+      const { url } = await this.s3Service.uploadFile(
+        projectThumbnail,
+        'images',
+      );
+      (updateProjectDto as any).projectThumbnailUrl = url;
+    }
+
     const updatedProject = await this.projectModel
       .findByIdAndUpdate(id, updateProjectDto, {
         new: true,
@@ -295,26 +376,128 @@ export class ProjectsService {
         }
         throw new BadRequestException(error.message);
       });
+
     if (!updatedProject) {
       throw new BadRequestException('Project not found');
     }
+
     return {
       message: 'Project updated successfully',
       project: updatedProject,
     };
   }
 
+  private extractS3KeyFromUrl(url: string): string {
+    // Extract S3 key from CloudFront URL
+    // URL format: https://cloudfront.../images/uuid-filename
+    const urlParts = url.split('/');
+    return urlParts.slice(-2).join('/');
+  }
+
   async remove(id: Types.ObjectId) {
+    const project = await this.projectModel.findById(id);
+    if (!project) {
+      throw new BadRequestException('Project not found');
+    }
+
+    // Delete all episodes and their S3 files
+    if (project.episodes && project.episodes.length > 0) {
+      const episodes = await this.episodeModel.find({
+        _id: { $in: project.episodes },
+      });
+      for (const episode of episodes) {
+        if (episode.s3Key) {
+          try {
+            await this.s3Service.deleteFile(episode.s3Key);
+          } catch (error) {
+            // Log error but continue deletion
+            console.error(
+              `Failed to delete episode S3 file: ${episode.s3Key}`,
+              error,
+            );
+          }
+        }
+      }
+      await this.episodeModel.deleteMany({
+        _id: { $in: project.episodes },
+      });
+    }
+
+    // Delete all reels and their S3 files
+    if (project.reels && project.reels.length > 0) {
+      const reels = await this.reelModel.find({
+        _id: { $in: project.reels },
+      });
+      for (const reel of reels) {
+        if (reel.s3Key) {
+          try {
+            await this.s3Service.deleteFile(reel.s3Key);
+          } catch (error) {
+            console.error(
+              `Failed to delete reel S3 file: ${reel.s3Key}`,
+              error,
+            );
+          }
+        }
+      }
+      await this.reelModel.deleteMany({
+        _id: { $in: project.reels },
+      });
+    }
+
+    // Delete inventory and its S3 file
+    if (project.inventory) {
+      const inventoryIds = Array.isArray(project.inventory)
+        ? project.inventory
+        : [project.inventory];
+      const inventories = await this.inventoryModel.find({
+        _id: { $in: inventoryIds },
+      });
+      for (const inventory of inventories) {
+        if (inventory.s3Key) {
+          try {
+            await this.s3Service.deleteFile(inventory.s3Key);
+          } catch (error) {
+            console.error(
+              `Failed to delete inventory S3 file: ${inventory.s3Key}`,
+              error,
+            );
+          }
+        }
+      }
+      await this.inventoryModel.deleteMany({
+        _id: { $in: inventoryIds },
+      });
+    }
+
+    // Delete all PDFs and their S3 files
+    if (project.pdf && project.pdf.length > 0) {
+      const pdfs = await this.fileModel.find({
+        _id: { $in: project.pdf },
+      });
+      for (const pdf of pdfs) {
+        if (pdf.s3Key) {
+          try {
+            await this.s3Service.deleteFile(pdf.s3Key);
+          } catch (error) {
+            console.error(`Failed to delete PDF S3 file: ${pdf.s3Key}`, error);
+          }
+        }
+      }
+      await this.fileModel.deleteMany({
+        _id: { $in: project.pdf },
+      });
+    }
+
+    // Soft delete the project
     const deletedProject = await this.projectModel.findByIdAndUpdate(
       id,
       { deletedAt: new Date() },
       { new: true },
     );
-    if (!deletedProject) {
-      throw new BadRequestException('Project not found');
-    }
+
     return {
-      message: 'Project deleted successfully',
+      message: 'Project and all associated data deleted successfully',
       project: deletedProject,
     };
   }

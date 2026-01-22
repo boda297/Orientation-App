@@ -6,16 +6,21 @@ import {
   IsMongoId,
   IsBoolean,
   IsPhoneNumber,
+  IsNumber,
+  IsDate,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { Types } from 'mongoose';
 
 export class CreateProjectDto {
-  @IsNotEmpty()
-  heroVideo?: Express.Multer.File;
+  @IsOptional()
+  heroVideo?: Express.Multer.File; // Can be a video or image
 
-  @IsNotEmpty()
-  logo: Express.Multer.File;
+  @IsOptional()
+  logo?: Express.Multer.File;
+
+  @IsOptional()
+  projectThumbnail?: Express.Multer.File;
 
   @IsString()
   @IsNotEmpty()
@@ -29,6 +34,14 @@ export class CreateProjectDto {
   @IsString()
   @IsNotEmpty()
   location: string;
+
+  @IsBoolean()
+  @IsOptional()
+  featured?: boolean;
+
+  @IsString()
+  @IsOptional()
+  mapsLocation?: string;
 
   @IsEnum(['PLANNING', 'CONSTRUCTION', 'COMPLETED', 'DELIVERED'])
   @IsOptional()
@@ -53,10 +66,6 @@ export class CreateProjectDto {
   @IsPhoneNumber()
   @IsOptional()
   whatsappNumber?: string;
-
-  @IsString()
-  @IsOptional()
-  mapsLocation?: string;
 
   @IsBoolean()
   @IsOptional()

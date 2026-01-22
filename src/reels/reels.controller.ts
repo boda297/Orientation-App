@@ -71,8 +71,7 @@ export class ReelsController {
     return this.reelsService.findAllReels();
   }
 
-  
-  @Get('saved') 
+  @Get('saved')
   @UseGuards(AuthGuard)
   getSavedReelsByUser(@Req() req: any) {
     return this.reelsService.getSavedReelsByUser(req.user.sub);
@@ -86,11 +85,34 @@ export class ReelsController {
   @Patch(':id')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'thumbnail', maxCount: 1 },
+      ],
+      {
+        limits: {
+          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+        },
+      },
+    ),
+  )
   updateReel(
     @Param() params: MongoIdDto,
     @Body() updateReelDto: UpdateReelDto,
+    @UploadedFiles()
+    files?: {
+      file?: Express.Multer.File[];
+      thumbnail?: Express.Multer.File[];
+    },
   ) {
-    return this.reelsService.updateReel(params.id, updateReelDto);
+    return this.reelsService.updateReel(
+      params.id,
+      updateReelDto,
+      files?.file?.[0],
+      files?.thumbnail?.[0],
+    );
   }
 
   @Delete(':id')

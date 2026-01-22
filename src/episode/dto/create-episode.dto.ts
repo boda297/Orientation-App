@@ -1,10 +1,5 @@
 import { Type } from 'class-transformer';
-import {
-  IsMongoId,
-  IsNotEmpty,
-  IsString,
-  IsOptional,
-} from 'class-validator';
+import { IsMongoId, IsNotEmpty, IsString, IsOptional } from 'class-validator';
 import { Types } from 'mongoose';
 
 export class CreateEpisodeDto {
@@ -18,15 +13,10 @@ export class CreateEpisodeDto {
   title: string;
 
   @IsString()
-  @IsOptional()
-  thumbnail?: string;
-
-  @IsString()
   @IsNotEmpty()
   episodeOrder: string;
 
   @IsString()
   @IsNotEmpty()
   duration: string;
-
 }

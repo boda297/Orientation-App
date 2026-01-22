@@ -51,10 +51,77 @@ export class S3Service {
     file: Express.Multer.File,
     folder: 'episodes' | 'reels' | 'images' | 'PDF' | 'inventory',
   ): Promise<{ key: string; url: string }> {
-    const fileExtension = file.originalname.split('.').pop();
+    if (!file || !file.originalname) {
+      throw new Error('Invalid file: file or originalname is missing');
+    }
+
+    // Extract file extension safely
+    let fileExtension =
+      file.originalname.split('.').pop()?.toLowerCase() || 'mp4';
+
+    // Validate MIME type and extension for video files
+    if (folder === 'reels' || folder === 'episodes') {
+      const validVideoExtensions = [
+        'mp4',
+        'avi',
+        'mov',
+        'mkv',
+        'webm',
+        'flv',
+        'wmv',
+      ];
+      const validVideoMimeTypes = [
+        'video/mp4',
+        'video/x-msvideo',
+        'video/quicktime',
+        'video/x-matroska',
+        'video/webm',
+        'video/x-flv',
+        'video/x-ms-wmv',
+      ];
+
+      // Check for audio-only MIME types
+      const audioMimeTypes = [
+        'audio/mpeg',
+        'audio/aac',
+        'audio/wav',
+        'audio/ogg',
+        'audio/mp4',
+        'audio/flac',
+      ];
+
+      if (audioMimeTypes.includes(file.mimetype)) {
+        this.logger.error(
+          `Audio file detected instead of video: ${file.originalname} (MIME: ${file.mimetype})`,
+        );
+        throw new Error(
+          `Invalid file type. Expected video file, received audio file (${file.mimetype}).`,
+        );
+      }
+
+      if (!validVideoExtensions.includes(fileExtension)) {
+        this.logger.warn(
+          `Invalid video extension: ${fileExtension}, MIME type: ${file.mimetype}`,
+        );
+      }
+
+      if (
+        !validVideoMimeTypes.includes(file.mimetype) &&
+        !file.mimetype.startsWith('video/')
+      ) {
+        this.logger.warn(
+          `Unusual MIME type for video: ${file.mimetype}. File: ${file.originalname}`,
+        );
+      }
+    }
+
     const fileName = `${folder}/${uuidv4()}.${fileExtension}`;
 
     try {
+      this.logger.debug(
+        `Uploading file: ${file.originalname} (${file.size} bytes, MIME: ${file.mimetype}) as ${fileName}`,
+      );
+
       const upload = new Upload({
         client: this.s3Client,
         params: {
@@ -78,6 +145,8 @@ export class S3Service {
       });
 
       await upload.done();
+
+      this.logger.debug(`File uploaded successfully: ${fileName}`);
 
       return {
         key: fileName,

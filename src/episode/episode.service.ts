@@ -19,8 +19,9 @@ export class EpisodeService {
 
   async uploadEpisode(
     createEpisodeDto: CreateEpisodeDto,
-    file: Express.Multer.File,
-    uploadedBy: string,
+    episodeFile: Express.Multer.File,
+    thumbnailFile?: Express.Multer.File,
+    uploadedBy?: string,
   ) {
     const project = await this.projectModel.findById(
       createEpisodeDto.projectId,
@@ -30,13 +31,26 @@ export class EpisodeService {
     }
 
     // Upload episode video to S3
-    const { key, url } = await this.s3Service.uploadFile(file, 'episodes');
+    const { key, url } = await this.s3Service.uploadFile(
+      episodeFile,
+      'episodes',
+    );
 
-    // Create episode with the uploaded S3 URL and calculated duration
+    // Upload thumbnail to S3 if provided
+    let thumbnailUrl: string | undefined;
+    if (thumbnailFile) {
+      const { url: thumbUrl } = await this.s3Service.uploadFile(
+        thumbnailFile,
+        'images',
+      );
+      thumbnailUrl = thumbUrl;
+    }
+
+    // Create episode with the uploaded S3 URLs
     const episodeData: any = {
       projectId: createEpisodeDto.projectId,
       title: createEpisodeDto.title,
-      thumbnail: createEpisodeDto.thumbnail || url, 
+      thumbnail: thumbnailUrl,
       episodeUrl: url,
       episodeOrder: createEpisodeDto.episodeOrder,
       s3Key: key,
@@ -51,7 +65,6 @@ export class EpisodeService {
       $push: { episodes: savedEpisode._id },
     });
 
-    
     return {
       message: 'Episode uploaded successfully',
       episode: savedEpisode,
@@ -114,5 +127,4 @@ export class EpisodeService {
       message: 'Episode deleted successfully',
     };
   }
-
 }

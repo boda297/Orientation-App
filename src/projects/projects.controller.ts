@@ -37,6 +37,7 @@ export class ProjectsController {
       [
         { name: 'logo', maxCount: 1 },
         { name: 'heroVideo', maxCount: 1 },
+        { name: 'projectThumbnail', maxCount: 1 },
       ],
       {
         limits: {
@@ -48,15 +49,17 @@ export class ProjectsController {
   createProject(
     @Body() createProjectDto: CreateProjectDto,
     @UploadedFiles()
-    files?: {
+    files: {
       logo?: Express.Multer.File[];
       heroVideo?: Express.Multer.File[];
+      projectThumbnail?: Express.Multer.File[];
     },
   ) {
     return this.projectsService.create(
       createProjectDto,
       files?.logo?.[0],
       files?.heroVideo?.[0],
+      files?.projectThumbnail?.[0],
     );
   }
 
@@ -79,11 +82,37 @@ export class ProjectsController {
   @Patch(':id')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'logo', maxCount: 1 },
+        { name: 'heroVideo', maxCount: 1 },
+        { name: 'projectThumbnail', maxCount: 1 },
+      ],
+      {
+        limits: {
+          fileSize: 1000 * 1024 * 1024, // 1GB max per file
+        },
+      },
+    ),
+  )
   updateProject(
     @Param() params: MongoIdDto,
     @Body() updateProjectDto: UpdateProjectDto,
+    @UploadedFiles()
+    files: {
+      logo?: Express.Multer.File[];
+      heroVideo?: Express.Multer.File[];
+      projectThumbnail?: Express.Multer.File[];
+    },
   ) {
-    return this.projectsService.update(params.id, updateProjectDto);
+    return this.projectsService.update(
+      params.id,
+      updateProjectDto,
+      files?.logo?.[0],
+      files?.heroVideo?.[0],
+      files?.projectThumbnail?.[0],
+    );
   }
 
   @Delete(':id')

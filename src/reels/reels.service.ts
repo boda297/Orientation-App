@@ -27,7 +27,6 @@ export class ReelsService {
     file: Express.Multer.File,
     thumbnail: Express.Multer.File,
   ) {
-
     const project = await this.projectModel.findById(createReelDto.projectId);
     if (!project) {
       throw new NotFoundException('Project not found');
@@ -89,18 +88,64 @@ export class ReelsService {
     };
   }
 
-  async updateReel(id: Types.ObjectId, updateReelDto: UpdateReelDto) {
-    const reel = await this.reelModel.findByIdAndUpdate(
-      id,
-      { $set: updateReelDto },
-      { new: true },
-    );
+  async updateReel(
+    id: Types.ObjectId,
+    updateReelDto: UpdateReelDto,
+    file?: Express.Multer.File,
+    thumbnail?: Express.Multer.File,
+  ) {
+    const reel = await this.reelModel.findById(id);
     if (!reel) {
       throw new NotFoundException('Reel not found');
     }
+
+    let videoUrl = reel.videoUrl;
+    let thumbnailUrl = reel.thumbnail;
+    let s3Key = reel.s3Key;
+
+    // If new video file is provided, upload it and delete old one
+    if (file) {
+      const { key, url } = await this.s3Service.uploadFile(file, 'reels');
+      videoUrl = url;
+      s3Key = key;
+
+      // Delete old video from S3
+      if (reel.s3Key) {
+        await this.s3Service.deleteFile(reel.s3Key);
+      }
+    }
+
+    // If new thumbnail is provided, upload it and delete old one
+    if (thumbnail) {
+      const { url: thumbUrl } = await this.s3Service.uploadFile(
+        thumbnail,
+        'images',
+      );
+      thumbnailUrl = thumbUrl;
+
+      // Delete old thumbnail from S3
+      if (reel.thumbnail) {
+        await this.s3Service.deleteFile(reel.thumbnail);
+      }
+    }
+
+    // Update reel with new data
+    const updatedReel = await this.reelModel.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          ...updateReelDto,
+          videoUrl,
+          thumbnail: thumbnailUrl,
+          s3Key,
+        },
+      },
+      { new: true },
+    );
+
     return {
       message: 'Reel updated successfully',
-      reel,
+      reel: updatedReel,
     };
   }
 

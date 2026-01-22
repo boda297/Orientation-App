@@ -29,6 +29,12 @@ export class Project {
   @Prop({ required: true })
   script: string;
 
+  @Prop({ required: true })
+  projectThumbnailUrl: string;
+
+  @Prop({ default: false })
+  featured: boolean;
+
   @Prop({ type: [Types.ObjectId], ref: 'Episode' })
   episodes: Types.ObjectId[];
 

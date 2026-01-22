@@ -12,8 +12,6 @@ import { EpisodeModule } from './episode/episode.module';
 import { ReelsModule } from './reels/reels.module';
 import { FilesModule } from './files/files.module';
 import { NewsModule } from './news/news.module';
-;
-
 @Module({
   imports: [
     ConfigModule.forRoot({

@@ -8,11 +8,11 @@ import {
   Delete,
   UseGuards,
   UseInterceptors,
-  UploadedFile,
+  UploadedFiles,
   Request,
   BadRequestException,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EpisodeService } from './episode.service';
 import { CreateEpisodeDto } from './dto/create-episode.dto';
 import { UpdateEpisodeDto } from './dto/update-episode.dto';
@@ -30,24 +30,35 @@ export class EpisodeController {
   @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
-    FileInterceptor('file', {
-      limits: {
-        fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+    FileFieldsInterceptor(
+      [
+        { name: 'episodeFile', maxCount: 1 },
+        { name: 'thumbnail', maxCount: 1 },
+      ],
+      {
+        limits: {
+          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+        },
       },
-    }),
+    ),
   )
   async uploadEpisode(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFiles()
+    files: {
+      episodeFile?: Express.Multer.File[];
+      thumbnail?: Express.Multer.File[];
+    },
     @Body() createEpisodeDto: CreateEpisodeDto,
     @Request() req,
   ) {
-    if (!file) {
-      throw new BadRequestException('No file uploaded');
+    if (!files?.episodeFile?.[0]) {
+      throw new BadRequestException('Episode file is required');
     }
 
     return this.episodeService.uploadEpisode(
       createEpisodeDto,
-      file,
+      files.episodeFile[0],
+      files.thumbnail?.[0],
       req.user.sub,
     );
   }
