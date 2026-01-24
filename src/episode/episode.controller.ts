@@ -74,13 +74,36 @@ export class EpisodeController {
   }
 
   @Patch(':id')
-  @UseGuards(RolesGuard, AuthGuard)
+  @UseGuards(AuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'episodeFile', maxCount: 1 },
+        { name: 'thumbnail', maxCount: 1 },
+      ],
+      {
+        limits: {
+          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+        },
+      },
+    ),
+  )
   async update(
     @Param() params: MongoIdDto,
     @Body() updateEpisodeDto: UpdateEpisodeDto,
+    @UploadedFiles()
+    files?: {
+      episodeFile?: Express.Multer.File[];
+      thumbnail?: Express.Multer.File[];
+    },
   ) {
-    return this.episodeService.update(params.id, updateEpisodeDto);
+    return this.episodeService.update(
+      params.id,
+      updateEpisodeDto,
+      files?.episodeFile?.[0],
+      files?.thumbnail?.[0],
+    );
   }
 
   @Delete(':id')

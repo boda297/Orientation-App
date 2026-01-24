@@ -90,17 +90,80 @@ export class EpisodeService {
     return episode;
   }
 
-  async update(id: Types.ObjectId, updateEpisodeDto: UpdateEpisodeDto) {
-    const episode = await this.episodeModel
-      .findByIdAndUpdate(id, { $set: updateEpisodeDto }, { new: true })
-      .populate('projectId', 'title slug');
+  async update(
+    id: Types.ObjectId,
+    updateEpisodeDto: UpdateEpisodeDto,
+    episodeFile?: Express.Multer.File,
+    thumbnailFile?: Express.Multer.File,
+  ) {
+    const episode = await this.episodeModel.findById(id);
 
     if (!episode) {
       throw new NotFoundException('Episode not found');
     }
 
+    let episodeUrl = episode.episodeUrl;
+    let thumbnailUrl = episode.thumbnail;
+    let s3Key = episode.s3Key;
+
+    // If new episode file is provided, upload it and delete old one
+    if (episodeFile) {
+      const { key, url } = await this.s3Service.uploadFile(
+        episodeFile,
+        'episodes',
+      );
+      episodeUrl = url;
+
+      // Delete old episode from S3
+      if (episode.s3Key) {
+        await this.s3Service.deleteFile(episode.s3Key);
+        this.logger.log(`Deleted old episode file from S3: ${episode.s3Key}`);
+      }
+
+      s3Key = key;
+    }
+
+    // If new thumbnail is provided, upload it and delete old one
+    if (thumbnailFile) {
+      const { url: thumbUrl } = await this.s3Service.uploadFile(
+        thumbnailFile,
+        'images',
+      );
+
+      // Delete old thumbnail from S3 if it exists
+      if (episode.thumbnail) {
+        // Extract S3 key from thumbnail URL
+        const oldThumbnailKey = episode.thumbnail.split('/').slice(-2).join('/');
+        if (oldThumbnailKey.startsWith('images/')) {
+          await this.s3Service.deleteFile(oldThumbnailKey);
+          this.logger.log(`Deleted old thumbnail from S3: ${oldThumbnailKey}`);
+        }
+      }
+
+      thumbnailUrl = thumbUrl;
+    }
+
+    // Update episode with new data
+    const updatedEpisode = await this.episodeModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            ...updateEpisodeDto,
+            episodeUrl,
+            thumbnail: thumbnailUrl,
+            s3Key,
+          },
+        },
+        { new: true },
+      )
+      .populate('projectId', 'title slug');
+
     this.logger.log(`Episode updated: ${id}`);
-    return episode;
+    return {
+      message: 'Episode updated successfully',
+      episode: updatedEpisode,
+    };
   }
 
   async remove(id: Types.ObjectId) {

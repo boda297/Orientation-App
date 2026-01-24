@@ -84,6 +84,14 @@ export class UsersService {
     return user;
   }
 
+  async findById(id: string) {
+    const user = await this.userModel.findById(id);
+    if (!user) {
+      return null;
+    }
+    return user;
+  }
+
   async update(id: Types.ObjectId, updateUserDto: UpdateUserDto) {
     try {
       const user = await this.userModel.findByIdAndUpdate(id, updateUserDto, {

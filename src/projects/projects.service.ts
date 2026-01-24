@@ -165,6 +165,10 @@ export class ProjectsService {
     if (!project) {
       throw new BadRequestException('Project not found');
     }
+    // populate developer with name and logoUrl
+    project.populate('developer', 'name logoUrl');
+    project.populate('episodes', 'title thumbnail episodeUrl');
+    project.populate('reels', 'videoUrl thumbnail');
     await this.incrementViewCount(id);
     return project;
   }

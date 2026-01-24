@@ -14,6 +14,8 @@ import {
 import { FilesService } from './files.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { CreatePdfDto } from './dto/create-pdf.dto';
+import { UpdateInventoryDto } from './dto/update-inventory.dto';
+import { UpdatePdfDto } from './dto/update-pdf.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AuthGuard } from 'src/auth/auth.guard';
 import { Roles } from 'src/roles/roles.decorator';
@@ -69,6 +71,30 @@ export class FilesController {
   @UseGuards(AuthGuard)
   getPDFById(@Param() params: MongoIdDto) {
     return this.filesService.getPDFById(params.id);
+  }
+
+  @Patch('update/inventory/:id')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @UseInterceptors(FileInterceptor('inventory'))
+  updateInventory(
+    @Param() params: MongoIdDto,
+    @Body() updateInventoryDto: UpdateInventoryDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.filesService.updateInventory(params.id, updateInventoryDto, file);
+  }
+
+  @Patch('update/pdf/:id')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @UseInterceptors(FileInterceptor('PDF'))
+  updatePDF(
+    @Param() params: MongoIdDto,
+    @Body() updatePdfDto: UpdatePdfDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.filesService.updatePDF(params.id, updatePdfDto, file);
   }
 
   @Delete('delete/inventory/:id')

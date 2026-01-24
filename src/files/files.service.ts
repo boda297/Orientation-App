@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { Inventory, InventoryDocument } from './entities/inventory.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -11,9 +11,13 @@ import {
 } from 'src/developer/entities/developer.entity';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { CreatePdfDto } from './dto/create-pdf.dto';
+import { UpdateInventoryDto } from './dto/update-inventory.dto';
+import { UpdatePdfDto } from './dto/update-pdf.dto';
 
 @Injectable()
 export class FilesService {
+  private readonly logger = new Logger(FilesService.name);
+
   constructor(
     @InjectModel(File.name) private fileModel: Model<FileDocument>,
     @InjectModel(Inventory.name)
@@ -189,6 +193,106 @@ export class FilesService {
 
     return {
       message: 'PDF deleted successfully',
+    };
+  }
+
+  async updateInventory(
+    id: Types.ObjectId,
+    updateInventoryDto: UpdateInventoryDto,
+    file?: Express.Multer.File,
+  ) {
+    const inventory = await this.inventoryModel.findById(id);
+    if (!inventory) {
+      throw new NotFoundException('Inventory not found');
+    }
+
+    let inventoryUrl = inventory.inventoryUrl;
+    let s3Key = inventory.s3Key;
+
+    // If new file is provided, upload it and delete old one
+    if (file) {
+      const { key, url } = await this.s3Service.uploadFile(file, 'inventory');
+      inventoryUrl = url;
+
+      // Delete old file from S3
+      if (inventory.s3Key) {
+        await this.s3Service.deleteFile(inventory.s3Key);
+        this.logger.log(`Deleted old inventory file from S3: ${inventory.s3Key}`);
+      }
+
+      s3Key = key;
+    }
+
+    // Update inventory with new data
+    const updatedInventory = await this.inventoryModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            ...updateInventoryDto,
+            inventoryUrl,
+            s3Key,
+          },
+        },
+        { new: true },
+      )
+      .populate('project', 'title slug')
+      .populate('developer');
+
+    this.logger.log(`Inventory updated: ${id}`);
+    return {
+      message: 'Inventory updated successfully',
+      inventory: updatedInventory,
+    };
+  }
+
+  async updatePDF(
+    id: Types.ObjectId,
+    updatePdfDto: UpdatePdfDto,
+    file?: Express.Multer.File,
+  ) {
+    const pdf = await this.fileModel.findById(id);
+    if (!pdf) {
+      throw new NotFoundException('PDF not found');
+    }
+
+    let pdfUrl = pdf.pdfUrl;
+    let s3Key = pdf.s3Key;
+
+    // If new file is provided, upload it and delete old one
+    if (file) {
+      const { key, url } = await this.s3Service.uploadFile(file, 'PDF');
+      pdfUrl = url;
+
+      // Delete old file from S3
+      if (pdf.s3Key) {
+        await this.s3Service.deleteFile(pdf.s3Key);
+        this.logger.log(`Deleted old PDF file from S3: ${pdf.s3Key}`);
+      }
+
+      s3Key = key;
+    }
+
+    // Update PDF with new data
+    const updatedPdf = await this.fileModel
+      .findByIdAndUpdate(
+        id,
+        {
+          $set: {
+            ...updatePdfDto,
+            pdfUrl,
+            s3Key,
+          },
+        },
+        { new: true },
+      )
+      .populate('project', 'title slug')
+      .populate('developer', 'name logoUrl');
+
+    this.logger.log(`PDF updated: ${id}`);
+    return {
+      message: 'PDF updated successfully',
+      pdf: updatedPdf,
     };
   }
 

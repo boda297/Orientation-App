@@ -23,9 +23,97 @@ string; // "Hello World!"
 
 ## 2. Auth Controller (`/auth`)
 
+### POST `/auth/register`
+
+**Description**: Register a new user (unverified). Sends OTP to email for verification.  
+**Authentication**: None  
+**Request Body** (`RegisterDto`):
+
+```typescript
+{
+  username: string; // Required
+  email: string; // Valid email address (required)
+  phoneNumber: string; // Valid phone number (required)
+  password: string; // 8-20 characters (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Verification code sent to email"
+}
+```
+
+**Note**: User CANNOT login until email is verified via OTP.
+
+---
+
+### POST `/auth/verify-email`
+
+**Description**: Verify email with OTP. Returns tokens on successful verification.  
+**Authentication**: None  
+**Request Body** (`VerifyEmailDto`):
+
+```typescript
+{
+  email: string; // Valid email address (required)
+  otp: string; // 4-6 digit OTP (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Email verified successfully"
+  user: {
+    _id: string;
+    username: string;
+    email: string;
+    phoneNumber: string;
+    savedProjects: string[];
+    role: string;
+    isEmailVerified: boolean; // true
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  accessToken: string;
+  refreshToken: string;
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Invalid or expired OTP
+
+---
+
+### POST `/auth/resend-verification`
+
+**Description**: Resend verification OTP to email  
+**Authentication**: None  
+**Request Body** (`ResendOtpDto`):
+
+```typescript
+{
+  email: string; // Valid email address (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Verification code sent to email"
+}
+```
+
+---
+
 ### POST `/auth/login`
 
-**Description**: Login endpoint for users  
+**Description**: Login endpoint for VERIFIED users only  
 **Authentication**: None  
 **Request Body** (`LoginDto`):
 
@@ -46,28 +134,31 @@ string; // "Hello World!"
     email: string;
     phoneNumber: string;
     savedProjects: string[];
-    role: string;       // 'user' | 'admin' | 'developer' | 'superadmin'
+    role: string;
+    isEmailVerified: boolean;
     createdAt: Date;
     updatedAt: Date;
   };
-  token: string;        // JWT token
+  accessToken: string;   // Short-lived JWT access token (default: 15 minutes)
+  refreshToken: string;  // Long-lived refresh token (default: 7 days)
 }
 ```
 
+**Error Responses**:
+- `401 Unauthorized`: Invalid credentials
+- `401 Unauthorized`: "Email not verified. Please verify your email before logging in."
+
 ---
 
-### POST `/auth/register`
+### POST `/auth/forgot-password`
 
-**Description**: Register a new user  
+**Description**: Request password reset. Sends OTP to email.  
 **Authentication**: None  
-**Request Body** (`RegisterDto`):
+**Request Body** (`ForgotPasswordDto`):
 
 ```typescript
 {
-  username: string; // Required
   email: string; // Valid email address (required)
-  phoneNumber: string; // Valid phone number (required)
-  password: string; // 8-20 characters (required)
 }
 ```
 
@@ -75,18 +166,159 @@ string; // "Hello World!"
 
 ```typescript
 {
-  user: {
-    _id: string;
-    username: string;
-    email: string;
-    phoneNumber: string;
-    savedProjects: string[];
-    role: string;       // Default: 'user'
-    createdAt: Date;
-    updatedAt: Date;
-  };
-  token: string;        // JWT token
+  message: string; // "If the email exists, a reset code has been sent"
 }
+```
+
+**Note**: Response is intentionally vague for security (doesn't reveal if email exists).
+
+---
+
+### POST `/auth/verify-reset-otp`
+
+**Description**: Verify password reset OTP. Returns reset token.  
+**Authentication**: None  
+**Request Body** (`VerifyResetOtpDto`):
+
+```typescript
+{
+  email: string; // Valid email address (required)
+  otp: string; // 4-6 digit OTP (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "OTP verified successfully"
+  resetToken: string; // Short-lived JWT reset token (5 minutes)
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Invalid or expired OTP
+
+---
+
+### POST `/auth/reset-password`
+
+**Description**: Reset password using reset token  
+**Authentication**: Required (Reset Token in Authorization header)  
+**Headers**:
+
+```
+Authorization: Bearer <resetToken>
+```
+
+**Request Body** (`ResetPasswordDto`):
+
+```typescript
+{
+  newPassword: string; // 8-20 characters (required)
+  confirmPassword: string; // Must match newPassword (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Password reset successfully"
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Passwords do not match
+- `401 Unauthorized`: Invalid or expired reset token
+
+**Note**: All refresh tokens are invalidated after password reset (logged out of all devices).
+
+---
+
+### POST `/auth/refresh`
+
+**Description**: Refresh tokens using rotation (single-use refresh tokens)  
+**Authentication**: None  
+**Request Body** (`RefreshTokenDto`):
+
+```typescript
+{
+  refreshToken: string; // Current refresh token (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  accessToken: string;   // New short-lived access token
+  refreshToken: string;  // New refresh token (old one is invalidated)
+}
+```
+
+**Error Responses**:
+- `401 Unauthorized`: Invalid or expired refresh token
+- `401 Unauthorized`: "Refresh token reuse detected. All sessions have been revoked."
+
+---
+
+### POST `/auth/logout`
+
+**Description**: Logout from current session (revoke refresh token)  
+**Authentication**: None  
+**Request Body** (`RefreshTokenDto`):
+
+```typescript
+{
+  refreshToken: string; // Current refresh token (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Logged out successfully"
+}
+```
+
+---
+
+### POST `/auth/logout-all`
+
+**Description**: Logout from all devices (revoke all refresh tokens for the user)  
+**Authentication**: Required (`AuthGuard`)  
+**Request**: None (user ID extracted from access token)
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Logged out from all devices successfully"
+}
+```
+
+---
+
+### GET `/auth/sessions`
+
+**Description**: Get all active sessions for the current user  
+**Authentication**: Required (`AuthGuard`)  
+**Request**: None (user ID extracted from access token)
+
+**Response**:
+
+```typescript
+[
+  {
+    _id: string;
+    deviceInfo: string;  // User-Agent string
+    ipAddress: string;   // Client IP address
+    createdAt: Date;     // Session start time
+    expiresAt: Date;     // Session expiry time
+  }
+]
 ```
 
 ---
@@ -618,9 +850,10 @@ string; // "Hello World!"
 
 ### PATCH `/episode/:id`
 
-**Description**: Update an episode  
+**Description**: Update an episode (with optional file replacement)  
 **Authentication**: Required (`AuthGuard`, `RolesGuard`)  
 **Required Role**: `ADMIN` or `SUPERADMIN`  
+**Request Type**: `multipart/form-data`  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -634,14 +867,26 @@ string; // "Hello World!"
 ```typescript
 {
   title?: string;
-  thumbnail?: string;
-  episodeUrl?: string;
   episodeOrder?: number;   // Min: 1
   duration?: number;       // Min: 0
 }
 ```
 
-**Response**: Updated episode object
+**Files** (optional - if provided, replaces the old file in S3):
+
+- `episodeFile`: Video file (max 5GB, optional) - replaces old episode video
+- `thumbnail`: Thumbnail image file (optional) - replaces old thumbnail
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Episode updated successfully"
+  episode: Episode; // Updated episode object
+}
+```
+
+**Note**: When a new file is uploaded, the old file is automatically deleted from S3.
 
 ---
 
@@ -1220,6 +1465,84 @@ string; // "Hello World!"
 ```
 
 **Response**: PDF object with populated project reference
+
+---
+
+### PATCH `/files/update/inventory/:id`
+
+**Description**: Update an inventory file (with optional file replacement)  
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Request Type**: `multipart/form-data`  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Request Body** (`UpdateInventoryDto` - all fields optional):
+
+```typescript
+{
+  title?: string;
+}
+```
+
+**Files** (optional - if provided, replaces the old file in S3):
+
+- `inventory`: Inventory file (optional) - replaces old inventory file
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Inventory updated successfully"
+  inventory: Inventory; // Updated inventory object with populated project and developer
+}
+```
+
+**Note**: When a new file is uploaded, the old file is automatically deleted from S3.
+
+---
+
+### PATCH `/files/update/pdf/:id`
+
+**Description**: Update a PDF file (with optional file replacement)  
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Request Type**: `multipart/form-data`  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Request Body** (`UpdatePdfDto` - all fields optional):
+
+```typescript
+{
+  title?: string;
+}
+```
+
+**Files** (optional - if provided, replaces the old file in S3):
+
+- `PDF`: PDF file (optional) - replaces old PDF file
+
+**Response**:
+
+```typescript
+{
+  message: string; // "PDF updated successfully"
+  pdf: File; // Updated PDF object with populated project and developer
+}
+```
+
+**Note**: When a new file is uploaded, the old file is automatically deleted from S3.
 
 ---
 
