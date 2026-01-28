@@ -1,9 +1,14 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
 import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { Developer, DeveloperDoc } from './entities/developer.entity';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
+import { JoinDeveloperDto } from './dto/join-developer.dto';
 import { UpdateDeveloperScriptDto } from './dto/update-developer-project.dto';
 import { S3Service } from 'src/s3/s3.service';
 import { Project, ProjectDocument } from 'src/projects/entities/project.entity';
@@ -14,6 +19,8 @@ import {
   InventoryDocument,
 } from 'src/files/entities/inventory.entity';
 import { File, FileDocument } from 'src/files/entities/file.entity';
+import { EmailService } from 'src/email/email.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class DeveloperService {
@@ -27,7 +34,34 @@ export class DeveloperService {
     private inventoryModel: Model<InventoryDocument>,
     @InjectModel(File.name) private fileModel: Model<FileDocument>,
     private s3Service: S3Service,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
+
+  async joinDeveloper(
+    joinDeveloperDto: JoinDeveloperDto,
+    meta?: { userId?: string; userEmail?: string },
+  ) {
+    const toEmail =
+      this.configService.get<string>('ADMIN_NOTIFICATION_EMAIL') ||
+      this.configService.get<string>('SMTP_FROM');
+
+    if (!toEmail) {
+      throw new InternalServerErrorException(
+        'ADMIN_NOTIFICATION_EMAIL is not configured',
+      );
+    }
+
+    await this.emailService.sendJoinDeveloperRequest(toEmail, {
+      userId: meta?.userId,
+      userEmail: meta?.userEmail,
+      ...joinDeveloperDto,
+    });
+
+    return {
+      message: 'Join developer request sent successfully',
+    };
+  }
 
   async findAllDevelopers() {
     // find all developers except deleted ones

@@ -119,45 +119,69 @@ export class ProjectsService {
     }
   }
 
-  findAll(query: QueryProjectDto) {
-    const { developerId, location, status, title, slug, limit, page, sortBy } =
-      query;
-    // Populate developer with name and logoUrl and episodes and reels
-    const mongoQuery = this.projectModel.find({ deletedAt: null });
-    mongoQuery.populate('developer', 'name logoUrl');
-    mongoQuery.populate(
-      'episodes',
-      'title thumbnail episodeUrl episodeOrder duration',
-    );
-    mongoQuery.populate('reels', 'title videoUrl thumbnail');
-    if (developerId) {
-      mongoQuery.where('developer').equals(developerId);
-    }
-    if (location) {
-      mongoQuery.where('location').equals(location);
-    }
-    if (status) {
-      mongoQuery.where('status').equals(status);
-    }
-    if (title) {
-      mongoQuery.where('title').equals(title);
-    }
-    if (slug) {
-      mongoQuery.where('slug').equals(slug);
-    }
-    if (limit) {
-      mongoQuery.limit(limit);
-    }
-    if (page && limit) {
-      mongoQuery.skip((page - 1) * limit);
-    }
-    if (sortBy) {
-      const sortField = sortBy === 'newest' ? 'createdAt' : sortBy;
-      mongoQuery.sort({ [sortField]: -1 });
-    } else {
-      mongoQuery.sort({ createdAt: -1 });
-    }
-    return mongoQuery.exec();
+  // findAll(query: QueryProjectDto) {
+  //   const { developerId, location, status, title, slug, limit, page, sortBy } =
+  //     query;
+  //   // Populate developer with name and logoUrl and episodes and reels
+  //   const mongoQuery = this.projectModel.find({ deletedAt: null });
+  //   mongoQuery.populate('developer', 'name logoUrl');
+  //   mongoQuery.populate(
+  //     'episodes',
+  //     'title thumbnail episodeUrl episodeOrder duration',
+  //   );
+  //   mongoQuery.populate('reels', 'title videoUrl thumbnail');
+  //   if (developerId) {
+  //     mongoQuery.where('developer').equals(developerId);
+  //   }
+  //   if (location) {
+  //     mongoQuery.where('location').equals(location);
+  //   }
+  //   if (status) {
+  //     mongoQuery.where('status').equals(status);
+  //   }
+  //   if (title) {
+  //     mongoQuery.where('title').equals(title);
+  //   }
+  //   if (slug) {
+  //     mongoQuery.where('slug').equals(slug);
+  //   }
+  //   if (limit) {
+  //     mongoQuery.limit(limit);
+  //   }
+  //   if (page && limit) {
+  //     mongoQuery.skip((page - 1) * limit);
+  //   }
+  //   if (sortBy) {
+  //     const sortField = sortBy === 'newest' ? 'createdAt' : sortBy;
+  //     mongoQuery.sort({ [sortField]: -1 });
+  //   } else {
+  //     mongoQuery.sort({ createdAt: -1 });
+  //   }
+  //   return mongoQuery.exec();
+  // }
+
+  findFeatured(limit: number = 10) {
+    return this.projectModel.find({ deletedAt: null, featured: true }).select('title logoUrl projectThumbnailUrl location').limit(limit).exec().catch((error) => {
+      throw new BadRequestException(error.message);
+    });
+  }
+
+  findProjectByLocation(location: string) {
+    return this.projectModel.find({ deletedAt: null, location: location }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
+      throw new BadRequestException(error.message);
+    });
+  }
+
+  findProjectByStatus(status: string) {
+    return this.projectModel.find({ deletedAt: null, status: status }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
+      throw new BadRequestException(error.message);
+    });
+  }
+
+  findProjectByTitle(title: string) {
+    return this.projectModel.find({ deletedAt: null, title: title }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
+      throw new BadRequestException(error.message);
+    });
   }
 
   async findOne(id: Types.ObjectId) {
@@ -390,6 +414,7 @@ export class ProjectsService {
       project: updatedProject,
     };
   }
+
 
   private extractS3KeyFromUrl(url: string): string {
     const urlParts = url.split('/');

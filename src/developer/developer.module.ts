@@ -13,6 +13,7 @@ import {
   InventorySchema,
 } from 'src/files/entities/inventory.entity';
 import { File, FileSchema } from 'src/files/entities/file.entity';
+import { EmailModule } from 'src/email/email.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { File, FileSchema } from 'src/files/entities/file.entity';
     ]),
     AuthModule,
     S3Module,
+    EmailModule,
   ],
   controllers: [DeveloperController],
   providers: [DeveloperService],

@@ -17,6 +17,8 @@ import { RolesGuard } from 'src/roles/roles.guard';
 import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
 import { UpdateDeveloperScriptDto } from './dto/update-developer-project.dto';
+import { JoinDeveloperDto } from './dto/join-developer.dto';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 
 @Controller('developer')
 export class DeveloperController {
@@ -41,6 +43,19 @@ export class DeveloperController {
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   create(@Body() createDeveloperDto: CreateDeveloperDto) {
     return this.developerService.createDeveloper(createDeveloperDto);
+  }
+
+  @Post('join-developer')
+  @UseGuards(JwtAuthGuard)
+  joinDeveloper(
+    @CurrentUser('sub') userId: string,
+    @CurrentUser('email') userEmail: string,
+    @Body() joinDeveloperDto: JoinDeveloperDto,
+  ) {
+    return this.developerService.joinDeveloper(joinDeveloperDto, {
+      userId,
+      userEmail,
+    });
   }
 
   @Patch(':id')

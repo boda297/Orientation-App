@@ -65,4 +65,50 @@ export class EmailService {
       throw new Error('Failed to send password reset email');
     }
   }
+
+  /**
+   * Send "Join Developer" request notification to admin email
+   */
+  async sendJoinDeveloperRequest(
+    toEmail: string,
+    payload: {
+      userId?: string;
+      userEmail?: string;
+      name: string;
+      address: string;
+      phoneNumber: string;
+      numberOfProjects: number;
+      socialmediaLink: string;
+      notes?: string;
+    },
+  ): Promise<void> {
+    const mailOptions = {
+      from: `"Orientation App" <${this.configService.get('SMTP_FROM')}>`,
+      to: toEmail,
+      subject: `Join Developer Request - ${payload.name}`,
+      text: [
+        'A new Join Developer request was submitted.',
+        '',
+        `User ID: ${payload.userId || 'N/A'}`,
+        `User Email: ${payload.userEmail || 'N/A'}`,
+        '',
+        `Name: ${payload.name}`,
+        `Address: ${payload.address}`,
+        `Phone: ${payload.phoneNumber}`,
+        `Number of Projects: ${payload.numberOfProjects}`,
+        `Social Link: ${payload.socialmediaLink}`,
+        `Notes: ${payload.notes || 'N/A'}`,
+        '',
+        `Submitted At: ${new Date().toISOString()}`,
+      ].join('\n'),
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log(`Join Developer request sent to ${toEmail}`);
+    } catch (error) {
+      this.logger.error('Error sending join developer request email:', error);
+      throw new Error('Failed to send join developer request email');
+    }
+  }
 }
