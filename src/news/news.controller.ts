@@ -19,14 +19,14 @@ import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
 import { RolesGuard } from 'src/roles/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 
 @Controller('news')
 export class NewsController {
   constructor(private readonly newsService: NewsService) {}
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('image'))
   createNews(
@@ -47,7 +47,7 @@ export class NewsController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('image'))
   update(
@@ -59,7 +59,7 @@ export class NewsController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   async remove(@Param() params: MongoIdDto) {
     return this.newsService.remove(params.id);

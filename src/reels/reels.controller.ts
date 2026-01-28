@@ -15,7 +15,7 @@ import {
 import { ReelsService } from './reels.service';
 import { CreateReelDto } from './dto/create-reel.dto';
 import { UpdateReelDto } from './dto/update-reel.dto';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/roles/roles.guard';
 import { Role } from 'src/roles/roles.enum';
 import { Roles } from 'src/roles/roles.decorator';
@@ -30,7 +30,7 @@ export class ReelsController {
   constructor(private readonly reelsService: ReelsService) {}
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -72,7 +72,7 @@ export class ReelsController {
   }
 
   @Get('saved')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   getSavedReelsByUser(@Req() req: any) {
     return this.reelsService.getSavedReelsByUser(req.user.sub);
   }
@@ -83,7 +83,7 @@ export class ReelsController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -116,20 +116,20 @@ export class ReelsController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   removeReel(@Param() params: MongoIdDto) {
     return this.reelsService.removeReel(params.id);
   }
 
   @Post(':id/save')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   saveReel(@Param() params: MongoIdDto, @Req() req: any) {
     return this.reelsService.saveReel(params.id, req.user.sub);
   }
 
   @Post(':id/unsave')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   unsaveReel(@Param() params: MongoIdDto, @Req() req: any) {
     return this.reelsService.unsaveReel(params.id, req.user.sub);
   }

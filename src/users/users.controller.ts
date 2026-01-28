@@ -15,16 +15,18 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import { Role } from 'src/roles/roles.enum';
 import { Roles } from 'src/roles/roles.decorator';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/roles/roles.guard';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
+import { Types } from 'mongoose';
 
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN)
   createAdmin(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
@@ -38,39 +40,60 @@ export class UsersController {
   // }
 
   @Get()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   findAll() {
     return this.usersService.findAll();
   }
 
+  @Get('saved-projects')
+  @UseGuards(JwtAuthGuard)
+  getSavedProjects(@CurrentUser('sub') userId: string) {
+    return this.usersService.getSavedProjects(userId as unknown as Types.ObjectId);
+  }
+
+  @Get('saved-reels')
+  @UseGuards(JwtAuthGuard)
+  getSavedReels(@CurrentUser('sub') userId: string) {
+    return this.usersService.getSavedReels(userId as unknown as Types.ObjectId);
+  }
+
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  getProfile(@CurrentUser('sub') userId: string) {
+    return this.usersService.findOne(userId as unknown as Types.ObjectId);
+  }
+  
   @Get(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   findOne(@Param() params: MongoIdDto) {
     return this.usersService.findOne(params.id);
   }
-  
+
+
   // user update own profile only
   @Patch('profile')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   updateProfile(
-    @Req() req: any,
+    @CurrentUser('sub') userId: string,
     @Body() updateUserDto: UpdateUserDto,
   ) {
-    return this.usersService.update(req.user.sub, updateUserDto);
+    return this.usersService.update(userId as unknown as Types.ObjectId, updateUserDto);
   }
 
   // admin update user
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   update(@Param() params: MongoIdDto, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(params.id, updateUserDto);
   }
 
+  
+
   @Delete(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN)
   remove(@Param() params: MongoIdDto) {
     return this.usersService.remove(params.id);

@@ -392,8 +392,6 @@ export class ProjectsService {
   }
 
   private extractS3KeyFromUrl(url: string): string {
-    // Extract S3 key from CloudFront URL
-    // URL format: https://cloudfront.../images/uuid-filename
     const urlParts = url.split('/');
     return urlParts.slice(-2).join('/');
   }

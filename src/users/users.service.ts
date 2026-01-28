@@ -10,23 +10,23 @@ import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
+import { escapeRegExp, normalizeEmail } from '../auth/utils/normalize-email';
 // import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-    // private readonly mailService: MailService,
   ) {}
 
   async create(createUserDto: CreateUserDto) {
-    // Only hash if password is not already hashed (doesn't start with $2b$)
     const password = createUserDto.password.startsWith('$2b$')
       ? createUserDto.password
       : await bcrypt.hash(createUserDto.password, 10);
 
     const user = new this.userModel({
       ...createUserDto,
+      email: normalizeEmail(createUserDto.email),
       password,
     });
     return await user
@@ -77,7 +77,11 @@ export class UsersService {
   }
 
   async findByEmail(email: string) {
-    const user = await this.userModel.findOne({ email });
+    const normalized = normalizeEmail(email);
+    // Case-insensitive exact match (handles old records saved with different casing)
+    const user = await this.userModel.findOne({
+      email: { $regex: `^${escapeRegExp(normalized)}$`, $options: 'i' },
+    });
     if (!user) {
       return null;
     }
@@ -90,6 +94,51 @@ export class UsersService {
       return null;
     }
     return user;
+  }
+
+  async getSavedProjects(userId: Types.ObjectId) {
+    try {
+      const user = await this.userModel
+        .findById(userId)
+        .populate('savedProjects', 'title projectThumbnailUrl');
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return {
+        message: 'Saved projects fetched successfully',
+        savedProjects: user.savedProjects,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(error.message);
+    }
+  }
+
+
+  async getSavedReels(userId: Types.ObjectId) {
+    try {
+      const user = await this.userModel
+        .findById(userId)
+        .populate('savedReels', 'title reelThumbnailUrl');
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      return {
+        message: 'Saved reels fetched successfully',
+        savedReels: user.savedReels,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new BadRequestException(error.message);
+    }
   }
 
   /**
@@ -190,5 +239,21 @@ export class UsersService {
       }
       throw new BadRequestException(error.message);
     }
+  }
+
+  /**
+   * Delete unverified users whose OTP has expired
+   * Returns the number of deleted users
+   */
+  async deleteUnverifiedExpiredUsers() {
+    const now = new Date();
+    const result = await this.userModel.deleteMany({
+      isEmailVerified: false,
+      emailVerificationOTPExpires: { $lt: now },
+    });
+
+    return {
+      deletedCount: result.deletedCount || 0,
+    };
   }
 }

@@ -25,7 +25,7 @@ string; // "Hello World!"
 
 ### POST `/auth/register`
 
-**Description**: Register a new user (unverified). Sends OTP to email for verification.  
+**Description**: Register a new user (unverified). Sends 4-digit OTP to email for verification.  
 **Authentication**: None  
 **Request Body** (`RegisterDto`):
 
@@ -33,7 +33,7 @@ string; // "Hello World!"
 {
   username: string; // Required
   email: string; // Valid email address (required)
-  phoneNumber: string; // Valid phone number (required)
+  phoneNumber?: string; // Valid phone number (optional)
   password: string; // 8-20 characters (required)
 }
 ```
@@ -42,24 +42,26 @@ string; // "Hello World!"
 
 ```typescript
 {
-  message: string; // "Verification code sent to email"
+  success: boolean; // true
+  message: string; // "Registration successful. Please check your email for verification code."
+  email: string; // User's email address
 }
 ```
 
-**Note**: User CANNOT login until email is verified via OTP.
+**Note**: User CANNOT login until email is verified via OTP. OTP expires in 2 minutes.
 
 ---
 
 ### POST `/auth/verify-email`
 
-**Description**: Verify email with OTP. Returns tokens on successful verification.  
+**Description**: Verify email with 4-digit OTP.  
 **Authentication**: None  
-**Request Body** (`VerifyEmailDto`):
+**Request Body**:
 
 ```typescript
 {
   email: string; // Valid email address (required)
-  otp: string; // 4-6 digit OTP (required)
+  otp: string; // 4-digit OTP (required)
 }
 ```
 
@@ -67,25 +69,15 @@ string; // "Hello World!"
 
 ```typescript
 {
+  success: boolean; // true
   message: string; // "Email verified successfully"
-  user: {
-    _id: string;
-    username: string;
-    email: string;
-    phoneNumber: string;
-    savedProjects: string[];
-    role: string;
-    isEmailVerified: boolean; // true
-    createdAt: Date;
-    updatedAt: Date;
-  };
-  accessToken: string;
-  refreshToken: string;
 }
 ```
 
 **Error Responses**:
-- `400 Bad Request`: Invalid or expired OTP
+- `400 Bad Request`: Invalid verification code
+- `400 Bad Request`: Verification code has expired
+- `400 Bad Request`: Email already verified
 
 ---
 
@@ -93,7 +85,7 @@ string; // "Hello World!"
 
 **Description**: Resend verification OTP to email  
 **Authentication**: None  
-**Request Body** (`ResendOtpDto`):
+**Request Body**:
 
 ```typescript
 {
@@ -105,7 +97,8 @@ string; // "Hello World!"
 
 ```typescript
 {
-  message: string; // "Verification code sent to email"
+  success: boolean; // true
+  message: string; // "Verification code sent to your email"
 }
 ```
 
@@ -146,15 +139,15 @@ string; // "Hello World!"
 
 **Error Responses**:
 - `401 Unauthorized`: Invalid credentials
-- `401 Unauthorized`: "Email not verified. Please verify your email before logging in."
+- `401 Unauthorized`: "Please verify your email before logging in"
 
 ---
 
 ### POST `/auth/forgot-password`
 
-**Description**: Request password reset. Sends OTP to email.  
+**Description**: Request password reset. Sends 4-digit OTP to email.  
 **Authentication**: None  
-**Request Body** (`ForgotPasswordDto`):
+**Request Body**:
 
 ```typescript
 {
@@ -166,24 +159,25 @@ string; // "Hello World!"
 
 ```typescript
 {
-  message: string; // "If the email exists, a reset code has been sent"
+  success: boolean; // true
+  message: string; // "Password reset code sent to your email"
 }
 ```
 
-**Note**: Response is intentionally vague for security (doesn't reveal if email exists).
+**Note**: Response doesn't reveal if email exists for security.
 
 ---
 
 ### POST `/auth/verify-reset-otp`
 
-**Description**: Verify password reset OTP. Returns reset token.  
+**Description**: Verify password reset OTP (optional step before reset).  
 **Authentication**: None  
-**Request Body** (`VerifyResetOtpDto`):
+**Request Body**:
 
 ```typescript
 {
   email: string; // Valid email address (required)
-  otp: string; // 4-6 digit OTP (required)
+  otp: string; // 4-digit OTP (required)
 }
 ```
 
@@ -191,32 +185,28 @@ string; // "Hello World!"
 
 ```typescript
 {
-  message: string; // "OTP verified successfully"
-  resetToken: string; // Short-lived JWT reset token (5 minutes)
+  success: boolean; // true
+  message: string; // "OTP verified. You can now reset your password."
 }
 ```
 
 **Error Responses**:
-- `400 Bad Request`: Invalid or expired OTP
+- `400 Bad Request`: Invalid reset code
+- `400 Bad Request`: Reset code has expired
 
 ---
 
 ### POST `/auth/reset-password`
 
-**Description**: Reset password using reset token  
-**Authentication**: Required (Reset Token in Authorization header)  
-**Headers**:
-
-```
-Authorization: Bearer <resetToken>
-```
-
-**Request Body** (`ResetPasswordDto`):
+**Description**: Reset password using email and OTP  
+**Authentication**: None  
+**Request Body**:
 
 ```typescript
 {
-  newPassword: string; // 8-20 characters (required)
-  confirmPassword: string; // Must match newPassword (required)
+  email: string; // Valid email address (required)
+  otp: string; // 4-digit OTP (required)
+  newPassword: string; // New password (required)
 }
 ```
 
@@ -224,13 +214,14 @@ Authorization: Bearer <resetToken>
 
 ```typescript
 {
+  success: boolean; // true
   message: string; // "Password reset successfully"
 }
 ```
 
 **Error Responses**:
-- `400 Bad Request`: Passwords do not match
-- `401 Unauthorized`: Invalid or expired reset token
+- `400 Bad Request`: Invalid reset code
+- `400 Bad Request`: Reset code has expired
 
 **Note**: All refresh tokens are invalidated after password reset (logged out of all devices).
 
@@ -1580,6 +1571,176 @@ Authorization: Bearer <resetToken>
 
 ---
 
+## 11. Watch History Controller (`/watch-history`)
+
+Tracks user progress for "Continue Watching" and allows resuming playback.
+
+### POST `/watch-history/progress`
+
+**Description**: Create/update watch progress. Automatically calculates `progressPercentage` and marks `completed=true` when progress reaches **90%+**.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Request Body** (`UpdateWatchProgressDto`):
+
+```typescript
+{
+  contentId: string;            // Required (unique per user)
+  contentTitle: string;         // Required
+  contentThumbnail?: string;    // Optional URL
+  currentTime: number;          // Required (seconds, >= 0)
+  duration: number;             // Required (seconds, >= 1)
+  contentType?: string;         // Optional: 'movie' | 'series' | 'episode'
+  season?: number;              // Optional (for series/episodes)
+  episode?: number;             // Optional (for series/episodes)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Watch progress updated successfully"
+  watchHistory: {
+    _id: string;
+    userId: string;
+    contentId: string;
+    contentTitle: string;
+    contentThumbnail?: string;
+    currentTime: number;
+    duration: number;
+    progressPercentage: number; // 0-100
+    completed: boolean;         // true if progress >= 90
+    lastWatchedAt: Date;
+    contentType?: string;
+    season?: number;
+    episode?: number;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+}
+```
+
+---
+
+### GET `/watch-history/continue-watching?limit=10`
+
+**Description**: Returns incomplete content with progress (`0 < progress < 90`), sorted by most recently watched.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Query Parameters**:
+- `limit` (optional): default `10` (max 100)
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Continue watching list fetched successfully"
+  items: WatchHistory[];
+  count: number;
+}
+```
+
+---
+
+### GET `/watch-history?includeCompleted=true&limit=50`
+
+**Description**: Returns watch history.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Query Parameters**:
+- `includeCompleted` (optional): default `true`
+- `limit` (optional): default `50` (max 200)
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Watch history fetched successfully"
+  items: WatchHistory[];
+  count: number;
+}
+```
+
+---
+
+### GET `/watch-history/recent?limit=10`
+
+**Description**: Returns content watched in the last 24 hours.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Query Parameters**:
+- `limit` (optional): default `10` (max 100)
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Recently watched content fetched successfully"
+  items: WatchHistory[];
+  count: number;
+}
+```
+
+---
+
+### GET `/watch-history/content/:contentId`
+
+**Description**: Returns watch progress for a specific content.  
+**Authentication**: Required (`JwtAuthGuard`)  
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Watch progress fetched successfully"
+  watchHistory: WatchHistory | null;
+}
+```
+
+---
+
+### POST `/watch-history/content/:contentId/complete`
+
+**Description**: Manually mark content as completed (`progressPercentage=100`).  
+**Authentication**: Required (`JwtAuthGuard`)  
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Content marked as completed"
+  watchHistory: WatchHistory;
+}
+```
+
+---
+
+### DELETE `/watch-history/content/:contentId`
+
+**Description**: Remove a specific content from watch history.  
+**Authentication**: Required (`JwtAuthGuard`)  
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Content removed from watch history"
+}
+```
+
+---
+
+### DELETE `/watch-history/clear`
+
+**Description**: Clear all watch history for the current user.  
+**Authentication**: Required (`JwtAuthGuard`)  
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Watch history cleared successfully"
+}
+```
+
+---
+
 ## Response Entities
 
 ### User Entity
@@ -1589,10 +1750,16 @@ Authorization: Bearer <resetToken>
   _id: string;
   username: string;
   email: string;
-  password: string;          // Excluded from responses
+  password: string;                    // Excluded from responses
   phoneNumber: string;
-  savedProjects: string[];   // Array of Project ObjectIds
+  savedProjects: string[];             // Array of Project ObjectIds
+  savedReels: string[];                // Array of Reel ObjectIds
   role: 'user' | 'admin' | 'developer' | 'superadmin';
+  isEmailVerified: boolean;            // Email verification status
+  emailVerificationOTP?: string;       // Excluded from responses
+  emailVerificationOTPExpires?: Date;  // Excluded from responses
+  passwordResetOTP?: string;           // Excluded from responses
+  passwordResetOTPExpires?: Date;      // Excluded from responses
   createdAt: Date;
   updatedAt: Date;
 }

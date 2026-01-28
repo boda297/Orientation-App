@@ -17,7 +17,7 @@ import { EpisodeService } from './episode.service';
 import { CreateEpisodeDto } from './dto/create-episode.dto';
 import { UpdateEpisodeDto } from './dto/update-episode.dto';
 import { MongoIdDto } from '../common/mongoId.dto';
-import { AuthGuard } from '../auth/auth.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../roles/roles.guard';
 import { Roles } from '../roles/roles.decorator';
 import { Role } from '../roles/roles.enum';
@@ -27,7 +27,7 @@ export class EpisodeController {
   constructor(private readonly episodeService: EpisodeService) {}
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -74,7 +74,7 @@ export class EpisodeController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -107,7 +107,7 @@ export class EpisodeController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard, AuthGuard)
+  @UseGuards(RolesGuard, JwtAuthGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   async remove(@Param() params: MongoIdDto) {
     return this.episodeService.remove(params.id);

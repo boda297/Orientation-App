@@ -10,21 +10,30 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service';
-import { AuthGuard } from './auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { Public } from './decorators/public.decorator';
+import { CurrentUser } from './decorators/current-user.decorator';
+import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ResendVerificationDto } from './dto/resend-verification.dto';
 
 interface AuthenticatedRequest extends Request {
-  user?: { sub: string; email: string; role: string };
+  user?: JwtPayload;
 }
 
 @Controller('auth')
+@UseGuards(JwtAuthGuard) // Apply guard globally to all routes
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // ==================== AUTHENTICATION ====================
 
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto, @Req() req: AuthenticatedRequest) {
@@ -36,12 +45,14 @@ export class AuthController {
     return this.authService.login(loginDto, deviceInfo, ipAddress);
   }
 
+  @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body() body: RefreshTokenDto, @Req() req: AuthenticatedRequest) {
@@ -57,6 +68,7 @@ export class AuthController {
     );
   }
 
+  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   logout(@Body() body: RefreshTokenDto) {
@@ -64,55 +76,76 @@ export class AuthController {
   }
 
   @Post('logout-all')
-  @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)
-  logoutAll(@Req() req: AuthenticatedRequest) {
-    const userId = req.user?.sub;
-    return this.authService.revokeAllUserTokens(userId!);
+  logoutAll(@CurrentUser('sub') userId: string) {
+    return this.authService.revokeAllUserTokens(userId);
   }
 
   @Get('sessions')
-  @UseGuards(AuthGuard)
-  getActiveSessions(@Req() req: AuthenticatedRequest) {
-    const userId = req.user?.sub;
-    return this.authService.getActiveSessions(userId!);
+  getActiveSessions(@CurrentUser('sub') userId: string) {
+    return this.authService.getActiveSessions(userId);
   }
 
   // ==================== EMAIL VERIFICATION ====================
 
+  @Public()
   @Post('verify-email')
   @HttpCode(HttpStatus.OK)
-  verifyEmail(@Body('email') email: string, @Body('otp') otp: string) {
-    return this.authService.verifyEmail(email, otp);
+  verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyEmail(
+      verifyEmailDto.email,
+      verifyEmailDto.otp,
+    );
   }
 
+  @Public()
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
-  resendVerificationOTP(@Body('email') email: string) {
-    return this.authService.resendVerificationOTP(email);
+  resendVerificationOTP(@Body() resendDto: ResendVerificationDto) {
+    return this.authService.resendVerificationOTP(resendDto.email);
   }
 
   // ==================== PASSWORD RESET ====================
 
+  @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  forgotPassword(@Body('email') email: string) {
-    return this.authService.forgotPassword(email);
+  forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto.email);
   }
 
+  @Public()
   @Post('verify-reset-otp')
   @HttpCode(HttpStatus.OK)
-  verifyResetOTP(@Body('email') email: string, @Body('otp') otp: string) {
-    return this.authService.verifyResetOTP(email, otp);
+  verifyResetOTP(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyResetOTP(
+      verifyEmailDto.email,
+      verifyEmailDto.otp,
+    );
   }
 
+  @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  resetPassword(
-    @Body('email') email: string,
-    @Body('otp') otp: string,
-    @Body('newPassword') newPassword: string,
-  ) {
-    return this.authService.resetPassword(email, otp, newPassword);
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(
+      resetPasswordDto.email,
+      resetPasswordDto.otp,
+      resetPasswordDto.newPassword,
+    );
+  }
+
+  // ==================== ADMIN UTILITIES ====================
+
+  /**
+   * Cleanup unverified users with expired OTPs
+   * This endpoint can be called manually or via a cron job
+   */
+  @Public()
+  @Post('cleanup-unverified')
+  @HttpCode(HttpStatus.OK)
+  cleanupUnverifiedUsers() {
+    return this.authService.cleanupUnverifiedUsers();
   }
 }
+

@@ -12,7 +12,7 @@ import { DeveloperService } from './developer.service';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/roles/roles.guard';
 import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
@@ -23,28 +23,28 @@ export class DeveloperController {
   constructor(private readonly developerService: DeveloperService) {}
 
   @Get()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   findAll() {
     return this.developerService.findAllDevelopers();
   }
 
   @Get(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   findOne(@Param() params: MongoIdDto) {
     return this.developerService.findOneDeveloper(params.id);
   }
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   create(@Body() createDeveloperDto: CreateDeveloperDto) {
     return this.developerService.createDeveloper(createDeveloperDto);
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   update(
     @Param() params: MongoIdDto,
@@ -55,7 +55,7 @@ export class DeveloperController {
 
   // update developer project script
   @Patch(':id/project')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.DEVELOPER, Role.ADMIN, Role.SUPERADMIN)
   updateDeveloperProject(
     @Param() params: MongoIdDto,
@@ -68,7 +68,7 @@ export class DeveloperController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   remove(@Param() params: MongoIdDto) {
     return this.developerService.remove(params.id);

@@ -12,6 +12,7 @@ import { EpisodeModule } from './episode/episode.module';
 import { ReelsModule } from './reels/reels.module';
 import { FilesModule } from './files/files.module';
 import { NewsModule } from './news/news.module';
+import { WatchHistoryModule } from './watch-history/watch-history.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -36,6 +37,7 @@ import { NewsModule } from './news/news.module';
     ReelsModule,
     FilesModule,
     NewsModule,
+    WatchHistoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

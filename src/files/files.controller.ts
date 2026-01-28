@@ -17,7 +17,7 @@ import { CreatePdfDto } from './dto/create-pdf.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
 import { MongoIdDto } from 'src/common/mongoId.dto';
@@ -28,7 +28,7 @@ export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   @Post('upload/inventory')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('inventory'))
   uploadFile(
@@ -39,7 +39,7 @@ export class FilesController {
   }
 
   @Post('upload/pdf')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('PDF'))
   uploadPDF(
@@ -50,31 +50,31 @@ export class FilesController {
   }
 
   @Get('get/inventory')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   getInventory() {
     return this.filesService.getInventory();
   }
 
   @Get('get/inventory/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   getInventoryById(@Param() params: MongoIdDto) {
     return this.filesService.getInventoryById(params.id);
   }
 
   @Get('get/pdf')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   getPDF() {
     return this.filesService.getPDF();
   }
 
   @Get('get/pdf/:id')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   getPDFById(@Param() params: MongoIdDto) {
     return this.filesService.getPDFById(params.id);
   }
 
   @Patch('update/inventory/:id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('inventory'))
   updateInventory(
@@ -86,7 +86,7 @@ export class FilesController {
   }
 
   @Patch('update/pdf/:id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('PDF'))
   updatePDF(
@@ -98,14 +98,14 @@ export class FilesController {
   }
 
   @Delete('delete/inventory/:id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   deleteFile(@Param() params: MongoIdDto) {
     return this.filesService.deleteInventory(params.id);
   }
 
   @Delete('delete/pdf/:id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   deletePDF(@Param() params: MongoIdDto) {
     return this.filesService.deletePDF(params.id);

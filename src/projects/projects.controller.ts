@@ -19,7 +19,7 @@ import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { QueryProjectDto } from './dto/query-project.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
-import { AuthGuard } from 'src/auth/auth.guard';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/roles/roles.guard';
 import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
@@ -30,7 +30,7 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Post()
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -80,7 +80,7 @@ export class ProjectsController {
   }
 
   @Patch(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   @UseInterceptors(
     FileFieldsInterceptor(
@@ -116,47 +116,47 @@ export class ProjectsController {
   }
 
   @Delete(':id')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   removeProject(@Param() params: MongoIdDto) {
     return this.projectsService.remove(params.id);
   }
 
   @Patch(':id/increment-view')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   incrementViewCount(@Param() params: MongoIdDto) {
     return this.projectsService.incrementViewCount(params.id);
   }
 
   @Patch(':id/save-project')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   saveProject(@Param() params: MongoIdDto, @Request() req: any) {
     const userId = new Types.ObjectId(req.user.sub);
     return this.projectsService.saveProject(params.id, userId);
   }
 
   @Patch(':id/unsave-project')
-  @UseGuards(AuthGuard)
+  @UseGuards(JwtAuthGuard)
   unsaveProject(@Param() params: MongoIdDto, @Request() req: any) {
     const userId = new Types.ObjectId(req.user.sub);
     return this.projectsService.unsaveProject(params.id, userId);
   }
 
   // @Put(':id/increment-share')
-  // @UseGuards(AuthGuard)
+  // @UseGuards(JwtAuthGuard)
   // incrementShareCount(@Param() params: MongoIdDto) {
   // return this.projectsService.incrementShareCount(params.id);
   // }
 
   @Put(':id/publish')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   publishProject(@Param() params: MongoIdDto) {
     return this.projectsService.publish(params.id);
   }
 
   @Put(':id/unpublish')
-  @UseGuards(AuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   unpublishProject(@Param() params: MongoIdDto) {
     return this.projectsService.unpublish(params.id);
