@@ -75,6 +75,7 @@ string; // "Hello World!"
 ```
 
 **Error Responses**:
+
 - `400 Bad Request`: Invalid verification code
 - `400 Bad Request`: Verification code has expired
 - `400 Bad Request`: Email already verified
@@ -138,6 +139,7 @@ string; // "Hello World!"
 ```
 
 **Error Responses**:
+
 - `401 Unauthorized`: Invalid credentials
 - `401 Unauthorized`: "Please verify your email before logging in"
 
@@ -191,6 +193,7 @@ string; // "Hello World!"
 ```
 
 **Error Responses**:
+
 - `400 Bad Request`: Invalid reset code
 - `400 Bad Request`: Reset code has expired
 
@@ -220,6 +223,7 @@ string; // "Hello World!"
 ```
 
 **Error Responses**:
+
 - `400 Bad Request`: Invalid reset code
 - `400 Bad Request`: Reset code has expired
 
@@ -243,12 +247,13 @@ string; // "Hello World!"
 
 ```typescript
 {
-  accessToken: string;   // New short-lived access token
-  refreshToken: string;  // New refresh token (old one is invalidated)
+  accessToken: string; // New short-lived access token
+  refreshToken: string; // New refresh token (old one is invalidated)
 }
 ```
 
 **Error Responses**:
+
 - `401 Unauthorized`: Invalid or expired refresh token
 - `401 Unauthorized`: "Refresh token reuse detected. All sessions have been revoked."
 
@@ -703,6 +708,35 @@ string; // "Hello World!"
 - `logo`: File (single file, optional)
 
 **Response**: Developer object
+
+---
+
+### POST `/developer/join-developer`
+
+**Description**: Submit a "join developer" request. The backend sends the submitted data to `ADMIN_NOTIFICATION_EMAIL` via SMTP.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Request Body** (`JoinDeveloperDto`):
+
+```typescript
+{
+  name: string;            // Required
+  address: string;         // Required
+  phoneNumber: string;     // Required
+  numberOfProjects: number; // Required
+  socialmediaLink: string; // Required (URL)
+  notes?: string;          // Optional
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Join developer request sent successfully"
+}
+```
+
+**Note**: Configure `ADMIN_NOTIFICATION_EMAIL` in `.env` to receive requests.
 
 ---
 
@@ -1341,8 +1375,8 @@ string; // "Hello World!"
 
 ```typescript
 {
-  projectId: string;              // MongoDB ObjectId (required)
-  description?: string;           // Optional
+  projectId: string; // MongoDB ObjectId (required)
+  title: string; // Required
 }
 ```
 
@@ -1355,14 +1389,8 @@ string; // "Hello World!"
 
 ```typescript
 {
-  _id: string;
-  projectId: string;              // Populated Project object
-  fileUrl: string;                // S3 CloudFront URL
-  fileName: string;
-  s3Key: string;                  // S3 object key
-  description?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  message: string; // "Inventory uploaded successfully"
+  inventory: Inventory; // Created inventory object
 }
 ```
 
@@ -1386,26 +1414,19 @@ string; // "Hello World!"
 **Files**:
 
 - `PDF`: PDF file (required)
-  - Max size: 20MB
 
 **Response**:
 
 ```typescript
 {
-  _id: string;
-  projectId: string; // Populated Project object
-  fileUrl: string; // S3 CloudFront URL
-  fileName: string;
-  title: string;
-  s3Key: string; // S3 object key
-  createdAt: Date;
-  updatedAt: Date;
+  message: string; // "PDF uploaded successfully"
+  pdf: File; // Created PDF object
 }
 ```
 
 ---
 
-### GET `/files/get/inventory`
+### GET `/files/inventory`
 
 **Description**: Get all inventory files  
 **Authentication**: Required (`AuthGuard`)  
@@ -1415,7 +1436,7 @@ string; // "Hello World!"
 
 ---
 
-### GET `/files/get/inventory/:id`
+### GET `/files/inventory/:id`
 
 **Description**: Get an inventory file by ID  
 **Authentication**: Required (`AuthGuard`)  
@@ -1432,7 +1453,7 @@ string; // "Hello World!"
 
 ---
 
-### GET `/files/get/pdf`
+### GET `/files/pdf`
 
 **Description**: Get all PDF files  
 **Authentication**: Required (`AuthGuard`)  
@@ -1442,7 +1463,7 @@ string; // "Hello World!"
 
 ---
 
-### GET `/files/get/pdf/:id`
+### GET `/files/pdf/:id`
 
 **Description**: Get a PDF file by ID  
 **Authentication**: Required (`AuthGuard`)  
@@ -1459,7 +1480,7 @@ string; // "Hello World!"
 
 ---
 
-### PATCH `/files/update/inventory/:id`
+### PATCH `/files/inventory/:id`
 
 **Description**: Update an inventory file (with optional file replacement)  
 **Authentication**: Required (`AuthGuard`, `RolesGuard`)  
@@ -1498,7 +1519,7 @@ string; // "Hello World!"
 
 ---
 
-### PATCH `/files/update/pdf/:id`
+### PATCH `/files/pdf/:id`
 
 **Description**: Update a PDF file (with optional file replacement)  
 **Authentication**: Required (`AuthGuard`, `RolesGuard`)  
@@ -1537,7 +1558,7 @@ string; // "Hello World!"
 
 ---
 
-### DELETE `/files/delete/inventory/:id`
+### DELETE `/files/inventory/:id`
 
 **Description**: Delete an inventory file (removes from S3)  
 **Authentication**: Required (`AuthGuard`, `RolesGuard`)  
@@ -1554,7 +1575,7 @@ string; // "Hello World!"
 
 ---
 
-### DELETE `/files/delete/pdf/:id`
+### DELETE `/files/pdf/:id`
 
 **Description**: Delete a PDF file (removes from S3)  
 **Authentication**: Required (`AuthGuard`, `RolesGuard`)  
@@ -1626,6 +1647,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 **Description**: Returns incomplete content with progress (`0 < progress < 90`), sorted by most recently watched.  
 **Authentication**: Required (`JwtAuthGuard`)  
 **Query Parameters**:
+
 - `limit` (optional): default `10` (max 100)
 
 **Response**:
@@ -1645,6 +1667,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 **Description**: Returns watch history.  
 **Authentication**: Required (`JwtAuthGuard`)  
 **Query Parameters**:
+
 - `includeCompleted` (optional): default `true`
 - `limit` (optional): default `50` (max 200)
 
@@ -1665,6 +1688,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 **Description**: Returns content watched in the last 24 hours.  
 **Authentication**: Required (`JwtAuthGuard`)  
 **Query Parameters**:
+
 - `limit` (optional): default `10` (max 100)
 
 **Response**:
@@ -1682,7 +1706,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 ### GET `/watch-history/content/:contentId`
 
 **Description**: Returns watch progress for a specific content.  
-**Authentication**: Required (`JwtAuthGuard`)  
+**Authentication**: Required (`JwtAuthGuard`)
 
 **Response**:
 
@@ -1698,7 +1722,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 ### POST `/watch-history/content/:contentId/complete`
 
 **Description**: Manually mark content as completed (`progressPercentage=100`).  
-**Authentication**: Required (`JwtAuthGuard`)  
+**Authentication**: Required (`JwtAuthGuard`)
 
 **Response**:
 
@@ -1714,7 +1738,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 ### DELETE `/watch-history/content/:contentId`
 
 **Description**: Remove a specific content from watch history.  
-**Authentication**: Required (`JwtAuthGuard`)  
+**Authentication**: Required (`JwtAuthGuard`)
 
 **Response**:
 
@@ -1729,7 +1753,7 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 ### DELETE `/watch-history/clear`
 
 **Description**: Clear all watch history for the current user.  
-**Authentication**: Required (`JwtAuthGuard`)  
+**Authentication**: Required (`JwtAuthGuard`)
 
 **Response**:
 
@@ -1779,8 +1803,8 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
   script: string;
   episodes: string[] | Episode[];  // Array of ObjectIds or populated Episodes
   reels: string[] | Reel[];        // Array of ObjectIds or populated Reels
-  inventory?: string | Inventory;   // ObjectId or populated Inventory
-  pdfUrl?: string | File;           // ObjectId or populated File
+  inventory?: string | Inventory;   // ObjectId or populated Inventory (single)
+  pdf: string[] | File[];           // Array of ObjectIds or populated Files
   heroVideoUrl: string;
   whatsappNumber?: string;
   trendingScore: number;

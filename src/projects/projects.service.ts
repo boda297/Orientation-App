@@ -160,27 +160,40 @@ export class ProjectsService {
   // }
 
   findFeatured(limit: number = 10) {
-    return this.projectModel.find({ deletedAt: null, featured: true }).select('title logoUrl projectThumbnailUrl location').limit(limit).exec().catch((error) => {
-      throw new BadRequestException(error.message);
-    });
+    return this.projectModel
+      .find({ deletedAt: null, featured: true })
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
   findProjectByLocation(location: string) {
-    return this.projectModel.find({ deletedAt: null, location: location }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
-      throw new BadRequestException(error.message);
-    });
+    return this.projectModel
+      .find({ deletedAt: null, location: location })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
   findProjectByStatus(status: string) {
-    return this.projectModel.find({ deletedAt: null, status: status }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
-      throw new BadRequestException(error.message);
-    });
+    return this.projectModel
+      .find({ deletedAt: null, status: status })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
   findProjectByTitle(title: string) {
-    return this.projectModel.find({ deletedAt: null, title: title }).select('title logoUrl projectThumbnailUrl location').exec().catch((error) => {
-      throw new BadRequestException(error.message);
-    });
+    return this.projectModel
+      .find({ deletedAt: null, title: title })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
   async findOne(id: Types.ObjectId) {
@@ -416,7 +429,6 @@ export class ProjectsService {
       project: updatedProject,
     };
   }
-
 
   private extractS3KeyFromUrl(url: string): string {
     const urlParts = url.split('/');

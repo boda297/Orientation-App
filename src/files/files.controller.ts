@@ -43,6 +43,7 @@ export class FilesController {
   }
 
   @Get('inventory')
+  @UseGuards(JwtAuthGuard)
   getInventory() {
     return this.filesService.getInventory();
   }
@@ -69,15 +70,16 @@ export class FilesController {
     @Body() updateInventoryDto: UpdateInventoryDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.filesService.updateInventory(params.id, updateInventoryDto, file);
+    return this.filesService.updateInventory(
+      params.id,
+      updateInventoryDto,
+      file,
+    );
   }
-  
-
-
 
   /**
    * PDF Module Routes
-  */
+   */
   @Post('upload/pdf')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
@@ -90,6 +92,7 @@ export class FilesController {
   }
 
   @Get('pdf')
+  @UseGuards(JwtAuthGuard)
   getPDF() {
     return this.filesService.getPDF();
   }
@@ -99,7 +102,6 @@ export class FilesController {
   getPDFById(@Param() params: MongoIdDto) {
     return this.filesService.getPDFById(params.id);
   }
-
 
   @Patch('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -112,7 +114,6 @@ export class FilesController {
   ) {
     return this.filesService.updatePDF(params.id, updatePdfDto, file);
   }
-
 
   @Delete('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
