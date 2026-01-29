@@ -66,11 +66,6 @@ export class ProjectsController {
   // findAllProjects(@Query() queryProjectDto: QueryProjectDto) {
   //   return this.projectsService.findAll(queryProjectDto);
   // }
-  @Get(':id')
-  findOneProject(@Param() params: MongoIdDto) {
-    return this.projectsService.findOne(params.id);
-  }
-
   @Get('featured')
   findFeaturedProjects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
@@ -97,6 +92,11 @@ export class ProjectsController {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.projectsService.findTrending(limitNum);
   }
+  @Get(':id')
+  findOneProject(@Param() params: MongoIdDto) {
+    return this.projectsService.findOne(params.id);
+  }
+
 
 
   @Patch(':id')

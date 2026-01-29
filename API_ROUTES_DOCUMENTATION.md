@@ -440,33 +440,117 @@ string; // "Hello World!"
 
 **Files**:
 
-- `logo`: File (max 1GB, single file)
-- `heroVideo`: File (max 1GB, single file)
+- `logo`: File (max 1GB, single file, optional)
+- `heroVideo`: File (max 1GB, single file, required)
+- `projectThumbnail`: File (max 1GB, single file, optional)
 
 **Response**: Project object
 
 ---
 
-### GET `/projects`
+### GET `/projects/:id`
 
-**Description**: Get all projects with filtering and pagination  
+**Description**: Get a project by ID. Returns project with populated `developer`, `episodes`, `reels`, `inventory`, and `pdf` fields. Automatically increments view count.  
 **Authentication**: None  
-**Query Parameters** (`QueryProjectDto` - all optional):
+**Route Parameters** (`MongoIdDto`):
 
 ```typescript
 {
-  developerId?: string;             // MongoDB ObjectId
-  location?: string;
-  status?: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
-  title?: string;
-  slug?: string;
-  limit?: number;                   // 1-100 (default: 10)
-  page?: number;                    // Min: 1
-  sortBy?: 'newest' | 'trending' | 'saveCount' | 'viewCount';
+  id: string; // Valid MongoDB ObjectId (required)
 }
 ```
 
-**Response**: Array of project objects with pagination metadata
+**Response**: Project object with populated references:
+
+```typescript
+{
+  _id: string;
+  title: string;
+  slug: string;
+  logoUrl?: string;
+  location: string;
+  status: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
+  developer: { _id: string; name: string; logoUrl?: string };
+  script: string;
+  episodes: Array<{ _id: string; title: string; thumbnail?: string; episodeUrl: string }>;
+  reels: Array<{ _id: string; videoUrl: string; thumbnail?: string }>;
+  inventory?: { _id: string; title: string; inventoryUrl: string };
+  pdf: Array<{ _id: string; title: string; pdfUrl: string }>;
+  projectThumbnailUrl: string;
+  heroVideoUrl: string;
+  whatsappNumber?: string;
+  trendingScore: number;
+  saveCount: number;
+  viewCount: number;
+  published: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+---
+
+### GET `/projects/featured?limit=10`
+
+**Description**: Get featured projects  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  limit?: string;  // Converted to number, default: 10
+}
+```
+
+**Response**: Array of featured project objects (title, logoUrl, projectThumbnailUrl, location)
+
+---
+
+### GET `/projects/location?location=North%20Coast`
+
+**Description**: Get projects by location  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  location: string; // Required
+}
+```
+
+**Response**: Array of project objects filtered by location (title, logoUrl, projectThumbnailUrl, location)
+
+---
+
+### GET `/projects/status?status=CONSTRUCTION`
+
+**Description**: Get projects by status  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  status: string; // 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED'
+}
+```
+
+**Response**: Array of project objects filtered by status (title, logoUrl, projectThumbnailUrl, location)
+
+---
+
+### GET `/projects/title?title=Direction%20White`
+
+**Description**: Get projects by title  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  title: string; // Required
+}
+```
+
+**Response**: Array of project objects filtered by title (title, logoUrl, projectThumbnailUrl, location)
 
 ---
 
@@ -482,23 +566,7 @@ string; // "Hello World!"
 }
 ```
 
-**Response**: Array of trending project objects
-
----
-
-### GET `/projects/:id`
-
-**Description**: Get a project by ID  
-**Authentication**: None  
-**Route Parameters** (`MongoIdDto`):
-
-```typescript
-{
-  id: string; // Valid MongoDB ObjectId (required)
-}
-```
-
-**Response**: Project object with populated references
+**Response**: Array of trending project objects with rank
 
 ---
 
@@ -515,22 +583,27 @@ string; // "Hello World!"
 }
 ```
 
-**Request Body** (`UpdateProjectDto` - all fields optional, same as CreateProjectDto):
+**Request Type**: `multipart/form-data`  
+**Request Body** (`UpdateProjectDto` - all fields optional):
 
 ```typescript
 {
   title?: string;
-  developer?: string;
+  developer?: string;                // MongoDB ObjectId
   location?: string;
   status?: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
   script?: string;
-  episodes?: any;
-  reels?: any;
-  inventory?: string;
-  pdfUrl?: string;
+  featured?: boolean;
+  mapsLocation?: string;
   whatsappNumber?: string;
 }
 ```
+
+**Files** (optional - if provided, replaces the old file in S3):
+
+- `logo`: File (max 1GB, single file, optional) - replaces old logo
+- `heroVideo`: File (max 1GB, single file, optional) - replaces old hero video
+- `projectThumbnail`: File (max 1GB, single file, optional) - replaces old thumbnail
 
 **Response**: Updated project object
 
