@@ -40,6 +40,7 @@ export class FilesService {
 
     const { key, url } = await this.s3Service.uploadFile(file, 'inventory');
 
+    // populate project and developer
     const inventory = await this.inventoryModel.create({
       title: createInventoryDto.title,
       project: project._id,
@@ -47,14 +48,8 @@ export class FilesService {
       s3Key: key,
       inventoryUrl: url,
     });
-
-    // push to project inventory
-    await this.projectModel.findByIdAndUpdate(
-      project._id,
-      { $push: { inventory: inventory._id } },
-      { new: true },
-    );
-
+    await inventory.populate('project', 'title slug')
+    await inventory.populate('developer', 'name logoUrl');
     return {
       message: 'Inventory uploaded successfully',
       inventory: inventory,
@@ -83,13 +78,16 @@ export class FilesService {
       pdfUrl: url,
     });
 
-    // push to project pdfs
+    // push to project pdf list
     await this.projectModel.findByIdAndUpdate(
       project._id,
-      { $push: { pdfs: pdf._id } },
+      { $push: { pdf: pdf._id } },
       { new: true },
     );
 
+    // populate project and developer
+    await pdf.populate('project', 'title slug')
+    await pdf.populate('developer', 'name logoUrl');
     return {
       message: 'PDF uploaded successfully',
       pdf: pdf,
@@ -113,7 +111,7 @@ export class FilesService {
     const inventory = await this.inventoryModel
       .findById(id)
       .populate('project', 'title slug')
-      .populate('developer');
+      .populate('developer', 'name logoUrl');
 
     if (!inventory) {
       throw new NotFoundException('Inventory not found');
@@ -166,7 +164,7 @@ export class FilesService {
     // Also remove inventory reference from project
     await this.projectModel.findByIdAndUpdate(
       inventory.project,
-      { $pull: { inventory: inventory._id } },
+      { $unset: { inventory: 1 } },
       { new: true },
     );
 
@@ -187,7 +185,7 @@ export class FilesService {
     // Also remove pdf reference from project
     await this.projectModel.findByIdAndUpdate(
       pdf.project,
-      { $pull: { pdfs: pdf._id } },
+      { $pull: { pdf: pdf._id } },
       { new: true },
     );
 
@@ -239,7 +237,6 @@ export class FilesService {
       .populate('project', 'title slug')
       .populate('developer');
 
-    this.logger.log(`Inventory updated: ${id}`);
     return {
       message: 'Inventory updated successfully',
       inventory: updatedInventory,
@@ -289,7 +286,6 @@ export class FilesService {
       .populate('project', 'title slug')
       .populate('developer', 'name logoUrl');
 
-    this.logger.log(`PDF updated: ${id}`);
     return {
       message: 'PDF updated successfully',
       pdf: updatedPdf,

@@ -44,7 +44,7 @@ export class Project {
   @Prop({ type: Types.ObjectId, ref: 'Inventory' })
   inventory: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: 'File' })
+  @Prop({ type: [Types.ObjectId], ref: 'File', default: [] })
   pdf: Types.ObjectId[];
 
   @Prop({ required: true })

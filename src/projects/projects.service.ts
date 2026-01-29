@@ -1,7 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
-import { QueryProjectDto } from './dto/query-project.dto';
 import { Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from './entities/project.entity';
 import { User, UserDocument } from 'src/users/entities/user.entity';
@@ -189,10 +188,13 @@ export class ProjectsService {
     if (!project) {
       throw new BadRequestException('Project not found');
     }
-    // populate developer with name and logoUrl
-    project.populate('developer', 'name logoUrl');
-    project.populate('episodes', 'title thumbnail episodeUrl');
-    project.populate('reels', 'videoUrl thumbnail');
+    await project.populate([
+      { path: 'developer', select: 'name logoUrl' },
+      { path: 'episodes', select: 'title thumbnail episodeUrl' },
+      { path: 'reels', select: 'videoUrl thumbnail title' },
+      { path: 'inventory', select: 'title inventoryUrl' },
+      { path: 'pdf', select: 'title pdfUrl' },
+    ]);
     await this.incrementViewCount(id);
     return project;
   }

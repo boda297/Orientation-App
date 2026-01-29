@@ -27,6 +27,10 @@ import { RolesGuard } from 'src/roles/roles.guard';
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
+  /**
+   *  Inevtory Module Routes
+   */
+
   @Post('upload/inventory')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
@@ -38,42 +42,25 @@ export class FilesController {
     return this.filesService.uploadInventory(createInventoryDto, file);
   }
 
-  @Post('upload/pdf')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
-  @UseInterceptors(FileInterceptor('PDF'))
-  uploadPDF(
-    @Body() createPdfDto: CreatePdfDto,
-    @UploadedFiles() files: Express.Multer.File[],
-  ) {
-    return this.filesService.uploadPDF(createPdfDto, files);
-  }
-
-  @Get('get/inventory')
-  @UseGuards(JwtAuthGuard)
+  @Get('inventory')
   getInventory() {
     return this.filesService.getInventory();
   }
 
-  @Get('get/inventory/:id')
+  @Delete('inventory/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  deleteFile(@Param() params: MongoIdDto) {
+    return this.filesService.deleteInventory(params.id);
+  }
+
+  @Get('inventory/:id')
   @UseGuards(JwtAuthGuard)
   getInventoryById(@Param() params: MongoIdDto) {
     return this.filesService.getInventoryById(params.id);
   }
 
-  @Get('get/pdf')
-  @UseGuards(JwtAuthGuard)
-  getPDF() {
-    return this.filesService.getPDF();
-  }
-
-  @Get('get/pdf/:id')
-  @UseGuards(JwtAuthGuard)
-  getPDFById(@Param() params: MongoIdDto) {
-    return this.filesService.getPDFById(params.id);
-  }
-
-  @Patch('update/inventory/:id')
+  @Patch('inventory/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('inventory'))
@@ -84,8 +71,37 @@ export class FilesController {
   ) {
     return this.filesService.updateInventory(params.id, updateInventoryDto, file);
   }
+  
 
-  @Patch('update/pdf/:id')
+
+
+  /**
+   * PDF Module Routes
+  */
+  @Post('upload/pdf')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @UseInterceptors(FileInterceptor('PDF'))
+  uploadPDF(
+    @Body() createPdfDto: CreatePdfDto,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.filesService.uploadPDF(createPdfDto, file ? [file] : []);
+  }
+
+  @Get('pdf')
+  getPDF() {
+    return this.filesService.getPDF();
+  }
+
+  @Get('pdf/:id')
+  @UseGuards(JwtAuthGuard)
+  getPDFById(@Param() params: MongoIdDto) {
+    return this.filesService.getPDFById(params.id);
+  }
+
+
+  @Patch('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @UseInterceptors(FileInterceptor('PDF'))
@@ -97,14 +113,8 @@ export class FilesController {
     return this.filesService.updatePDF(params.id, updatePdfDto, file);
   }
 
-  @Delete('delete/inventory/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
-  deleteFile(@Param() params: MongoIdDto) {
-    return this.filesService.deleteInventory(params.id);
-  }
 
-  @Delete('delete/pdf/:id')
+  @Delete('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   deletePDF(@Param() params: MongoIdDto) {
