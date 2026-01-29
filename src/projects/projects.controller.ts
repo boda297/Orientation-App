@@ -23,6 +23,7 @@ import { RolesGuard } from 'src/roles/roles.guard';
 import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
 import { Types } from 'mongoose';
+import { QueryProjectDto } from './dto/query-project.dto';
 
 @Controller('projects')
 export class ProjectsController {
@@ -62,10 +63,11 @@ export class ProjectsController {
     );
   }
 
-  // @Get()
-  // findAllProjects(@Query() queryProjectDto: QueryProjectDto) {
-  //   return this.projectsService.findAll(queryProjectDto);
-  // }
+  @Get()
+  findAllProjects(@Query() queryProjectDto: QueryProjectDto) {
+    return this.projectsService.findAll(queryProjectDto);
+  }
+
   @Get('featured')
   findFeaturedProjects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
@@ -97,6 +99,13 @@ export class ProjectsController {
   findTrendingProjects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.projectsService.findTrending(limitNum);
+  }
+
+  @Get('saved')
+  @UseGuards(JwtAuthGuard)
+  findSavedProjects(@Request() req: any) {
+    const userId = new Types.ObjectId(req.user.sub);
+    return this.projectsService.findSavedProjects(userId);
   }
 
   @Get(':id')

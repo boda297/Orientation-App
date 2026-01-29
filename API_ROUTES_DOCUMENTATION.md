@@ -315,6 +315,23 @@ string; // "Hello World!"
     expiresAt: Date;     // Session expiry time
   }
 ]
+
+---
+
+### POST `/auth/cleanup-unverified`
+
+**Description**: Cleanup unverified users with expired OTPs (Manual or Cron)
+**Authentication**: None (Public)
+**Request**: None
+**Response**:
+
+```typescript
+{
+  success: boolean; // true
+  message: string;  // "Cleaned up X unverified users with expired OTPs"
+  deletedCount: number;
+}
+```
 ```
 
 ---
@@ -351,6 +368,36 @@ string; // "Hello World!"
 
 ---
 
+### GET `/users/profile`
+
+**Description**: Get current user profile
+**Authentication**: Required (`AuthGuard`)
+**Required Role**: Any authenticated user
+**Request**: None
+**Response**: User object
+
+---
+
+### PATCH `/users/profile`
+
+**Description**: Update current user profile
+**Authentication**: Required (`AuthGuard`)
+**Required Role**: Any authenticated user
+**Request Body** (`UpdateUserDto` - all fields optional):
+
+```typescript
+{
+  username?: string;
+  email?: string;
+  phoneNumber?: string;
+  password?: string;  // 8-20 characters with complexity requirements
+}
+```
+
+**Response**: Updated user object
+
+---
+
 ### GET `/users/:id`
 
 **Description**: Get a user by ID  
@@ -370,9 +417,9 @@ string; // "Hello World!"
 
 ### PATCH `/users/:id`
 
-**Description**: Update a user  
-**Authentication**: Required (`AuthGuard`)  
-**Required Role**: Any authenticated user  
+**Description**: Update a user (Admin)
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `SUPERADMIN` or `ADMIN`
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -433,8 +480,11 @@ string; // "Hello World!"
   episodes?: any;                   // Optional
   reels?: any;                      // Optional
   inventory?: string;               // MongoDB ObjectId (optional)
-  pdfUrl?: string;                  // MongoDB ObjectId (optional)
+  pdf?: string[];                   // Array of MongoDB ObjectIds (optional)
   whatsappNumber?: string;          // Valid phone number (optional)
+  featured?: boolean;               // Optional
+  mapsLocation?: string;            // Optional
+  published?: boolean;              // Optional
 }
 ```
 
@@ -503,6 +553,17 @@ string; // "Hello World!"
 ```
 
 **Response**: Array of featured project objects (title, logoUrl, projectThumbnailUrl, location)
+
+---
+
+### GET `/projects/saved`
+
+**Description**: Get projects saved by the current user
+**Authentication**: Required (`AuthGuard`)
+**Required Role**: Any authenticated user
+**Request**: None
+**Note**: User ID is extracted from JWT token (`req.user.sub`)
+**Response**: Array of saved project objects (id, title, location, projectThumbnailUrl)
 
 ---
 
@@ -596,6 +657,9 @@ string; // "Hello World!"
   featured?: boolean;
   mapsLocation?: string;
   whatsappNumber?: string;
+  inventory?: string;                // MongoDB ObjectId
+  pdf?: string[];                    // Array of MongoDB ObjectIds
+  published?: boolean;
 }
 ```
 
@@ -738,6 +802,72 @@ string; // "Hello World!"
 **Required Role**: `ADMIN` or `SUPERADMIN`  
 **Request**: None  
 **Response**: Array of developer objects
+
+---
+
+### GET `/developer/me/profile`
+
+**Description**: Get current developer profile
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `DEVELOPER`
+**Request**: None
+**Response**: Developer object
+
+---
+
+### GET `/developer/me/projects`
+
+**Description**: Get current developer's projects
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `DEVELOPER`
+**Request**: None
+**Response**: Array of project objects
+
+---
+
+### PATCH `/developer/me/profile`
+
+**Description**: Update current developer profile
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `DEVELOPER`
+**Request Body** (`UpdateDeveloperDto`): Same as `PATCH /developer/:id`
+**Response**: Updated developer object
+
+---
+
+### POST `/developer/create-account`
+
+**Description**: Create a user account for an existing developer entity
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `ADMIN` or `SUPERADMIN`
+**Request Body** (`CreateDeveloperAccountDto`):
+
+```typescript
+{
+  developerId: string; // Valid MongoDB ObjectId (required)
+  password: string;    // 8-20 chars, complex (required)
+}
+```
+
+**Response**: User object
+
+---
+
+### POST `/developer/:developerId/link-user/:userId`
+
+**Description**: Link an existing user to a developer
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `ADMIN` or `SUPERADMIN`
+**Response**: Updated developer object
+
+---
+
+### DELETE `/developer/:developerId/unlink-user`
+
+**Description**: Unlink user from a developer
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `ADMIN` or `SUPERADMIN`
+**Response**: Updated developer object
 
 ---
 
@@ -1024,8 +1154,7 @@ string; // "Hello World!"
 ```typescript
 {
   title: string;          // Required
-  description?: string;   // Optional
-  projectId?: string;     // MongoDB ObjectId (optional)
+  projectId: string;      // MongoDB ObjectId (required)
 }
 ```
 
@@ -1062,7 +1191,14 @@ string; // "Hello World!"
 **Request**: None  
 **Note**: User ID is extracted from JWT token (`req.user.sub`)
 
-**Response**: Array of saved reel objects
+**Response**:
+
+```typescript
+{
+  message: string; // "Saved reels fetched successfully"
+  reels: Array<{ _id: string; title: string; thumbnail: string }>;
+}
+```
 
 ---
 
@@ -1100,9 +1236,6 @@ string; // "Hello World!"
 ```typescript
 {
   title?: string;
-  description?: string;
-  videoUrl?: string;
-  thumbnail?: string;
   projectId?: string;     // MongoDB ObjectId
 }
 ```

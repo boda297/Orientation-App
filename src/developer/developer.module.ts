@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { DeveloperService } from './developer.service';
+import { DeveloperAuthService } from './developer-auth.service';
 import { DeveloperController } from './developer.controller';
 import { Developer, DeveloperSchema } from './entities/developer.entity';
+import { User, UserSchema } from 'src/users/entities/user.entity';
 import { AuthModule } from 'src/auth/auth.module';
 import { S3Module } from 'src/s3/s3.module';
 import { Project, ProjectSchema } from 'src/projects/entities/project.entity';
@@ -19,6 +21,7 @@ import { EmailModule } from 'src/email/email.module';
   imports: [
     MongooseModule.forFeature([
       { name: Developer.name, schema: DeveloperSchema },
+      { name: User.name, schema: UserSchema },
       { name: Project.name, schema: ProjectSchema },
       { name: Episode.name, schema: EpisodeSchema },
       { name: Reel.name, schema: ReelSchema },
@@ -30,7 +33,7 @@ import { EmailModule } from 'src/email/email.module';
     EmailModule,
   ],
   controllers: [DeveloperController],
-  providers: [DeveloperService],
-  exports: [DeveloperService],
+  providers: [DeveloperService, DeveloperAuthService],
+  exports: [DeveloperService, DeveloperAuthService],
 })
 export class DeveloperModule {}

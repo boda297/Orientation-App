@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
 import { Model, Types } from 'mongoose';
@@ -10,6 +11,7 @@ import { Developer, DeveloperDoc } from './entities/developer.entity';
 import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { JoinDeveloperDto } from './dto/join-developer.dto';
 import { UpdateDeveloperScriptDto } from './dto/update-developer-project.dto';
+import { CreateDeveloperAccountDto } from './dto/create-developer-account.dto';
 import { S3Service } from 'src/s3/s3.service';
 import { Project, ProjectDocument } from 'src/projects/entities/project.entity';
 import { Episode, EpisodeDocument } from 'src/episode/entities/episode.entity';
@@ -21,6 +23,7 @@ import {
 import { File, FileDocument } from 'src/files/entities/file.entity';
 import { EmailService } from 'src/email/email.service';
 import { ConfigService } from '@nestjs/config';
+import { DeveloperAuthService } from './developer-auth.service';
 
 @Injectable()
 export class DeveloperService {
@@ -36,6 +39,7 @@ export class DeveloperService {
     private s3Service: S3Service,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly developerAuthService: DeveloperAuthService,
   ) {}
 
   async joinDeveloper(
@@ -82,6 +86,79 @@ export class DeveloperService {
     return this.developerModel.findById(id).populate('projects');
   }
 
+  async findProjectsByDeveloperId(developerId: Types.ObjectId) {
+    return this.projectModel
+      .find({ developer: developerId, deletedAt: null })
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  /** Fetch projects by IDs from the developer entity's projects array */
+  async findProjectsByIds(projectIds: Types.ObjectId[]) {
+    if (!projectIds?.length) return [];
+    return this.projectModel
+      .find({ _id: { $in: projectIds }, deletedAt: null })
+      .select('title location projectThumbnailUrl')
+      .sort({ createdAt: -1 })
+      .exec();
+  }
+
+  async getMyProfile(userId: string) {
+    const developer =
+      await this.developerAuthService.getDeveloperByUserId(userId);
+    if (!developer) {
+      throw new NotFoundException('Developer profile not found for this user');
+    }
+    return this.findOneDeveloper(developer._id as Types.ObjectId);
+  }
+
+  async getMyProjects(userId: string) {
+    const developer =
+      await this.developerAuthService.getDeveloperByUserId(userId);
+    if (!developer) {
+      throw new NotFoundException('Developer profile not found for this user');
+    }
+    const projectIds = (developer.projects ?? []) as Types.ObjectId[];
+    const projects = await this.findProjectsByIds(projectIds);
+    return {
+      message: 'Projects fetched successfully',
+      projects,
+      developer: {
+        id: developer._id.toString(),
+        name: developer.name,
+        email: developer.email,
+        location: developer.location,
+      },
+    };
+  }
+
+  async updateMyProfile(
+    userId: string,
+    updateDeveloperDto: UpdateDeveloperDto,
+  ) {
+    const developer =
+      await this.developerAuthService.getDeveloperByUserId(userId);
+    if (!developer) {
+      throw new NotFoundException('Developer profile not found for this user');
+    }
+    return this.updateDeveloper(
+      developer._id as Types.ObjectId,
+      updateDeveloperDto,
+    );
+  }
+
+  createDeveloperAccount(dto: CreateDeveloperAccountDto) {
+    return this.developerAuthService.createDeveloperAccount(dto);
+  }
+
+  linkUserToDeveloper(developerId: string, userId: string) {
+    return this.developerAuthService.linkUserToDeveloper(developerId, userId);
+  }
+
+  unlinkUserFromDeveloper(developerId: string) {
+    return this.developerAuthService.unlinkUserFromDeveloper(developerId);
+  }
+
   async findByName(name: string): Promise<DeveloperDoc | null> {
     return this.developerModel.findOne({
       name: { $regex: new RegExp(`^${name}$`, 'i') },
@@ -91,7 +168,6 @@ export class DeveloperService {
 
   async createDeveloper(createDeveloperDto: CreateDeveloperDto) {
     const developerExists = await this.findByName(createDeveloperDto.name);
-    console.log(developerExists);
     if (developerExists) {
       throw new BadRequestException('Developer with this name already exists');
     }

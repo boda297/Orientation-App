@@ -18,6 +18,7 @@ import {
   InventoryDocument,
 } from 'src/files/entities/inventory.entity';
 import { File, FileDocument } from 'src/files/entities/file.entity';
+import { QueryProjectDto } from './dto/query-project.dto';
 
 @Injectable()
 export class ProjectsService {
@@ -27,8 +28,7 @@ export class ProjectsService {
     @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
     @InjectModel(Episode.name) private episodeModel: Model<EpisodeDocument>,
     @InjectModel(Reel.name) private reelModel: Model<ReelDocument>,
-    @InjectModel(Inventory.name)
-    private inventoryModel: Model<InventoryDocument>,
+    @InjectModel(Inventory.name) private inventoryModel: Model<InventoryDocument>,
     @InjectModel(File.name) private fileModel: Model<FileDocument>,
     private developerService: DeveloperService,
     private s3Service: S3Service,
@@ -118,46 +118,39 @@ export class ProjectsService {
     }
   }
 
-  // findAll(query: QueryProjectDto) {
-  //   const { developerId, location, status, title, slug, limit, page, sortBy } =
-  //     query;
-  //   // Populate developer with name and logoUrl and episodes and reels
-  //   const mongoQuery = this.projectModel.find({ deletedAt: null });
-  //   mongoQuery.populate('developer', 'name logoUrl');
-  //   mongoQuery.populate(
-  //     'episodes',
-  //     'title thumbnail episodeUrl episodeOrder duration',
-  //   );
-  //   mongoQuery.populate('reels', 'title videoUrl thumbnail');
-  //   if (developerId) {
-  //     mongoQuery.where('developer').equals(developerId);
-  //   }
-  //   if (location) {
-  //     mongoQuery.where('location').equals(location);
-  //   }
-  //   if (status) {
-  //     mongoQuery.where('status').equals(status);
-  //   }
-  //   if (title) {
-  //     mongoQuery.where('title').equals(title);
-  //   }
-  //   if (slug) {
-  //     mongoQuery.where('slug').equals(slug);
-  //   }
-  //   if (limit) {
-  //     mongoQuery.limit(limit);
-  //   }
-  //   if (page && limit) {
-  //     mongoQuery.skip((page - 1) * limit);
-  //   }
-  //   if (sortBy) {
-  //     const sortField = sortBy === 'newest' ? 'createdAt' : sortBy;
-  //     mongoQuery.sort({ [sortField]: -1 });
-  //   } else {
-  //     mongoQuery.sort({ createdAt: -1 });
-  //   }
-  //   return mongoQuery.exec();
-  // }
+  findAll(query: QueryProjectDto) {
+    const { developerId, location, status, title, slug, limit, page, sortBy } =
+      query;
+    const mongoQuery = this.projectModel.find({ deletedAt: null }).select('id title location projectThumbnailUrl');
+    if (developerId) {
+      mongoQuery.where('developer').equals(developerId);
+    }
+    if (location) {
+      mongoQuery.where('location').equals(location);
+    }
+    if (status) {
+      mongoQuery.where('status').equals(status);
+    }
+    if (title) {
+      mongoQuery.where('title').equals(title);
+    }
+    if (slug) {
+      mongoQuery.where('slug').equals(slug);
+    }
+    if (limit) {
+      mongoQuery.limit(limit);
+    }
+    if (page && limit) {
+      mongoQuery.skip((page - 1) * limit);
+    }
+    if (sortBy) {
+      const sortField = sortBy === 'newest' ? 'createdAt' : sortBy;
+      mongoQuery.sort({ [sortField]: -1 });
+    } else {
+      mongoQuery.sort({ createdAt: -1 });
+    }
+    return mongoQuery.exec();
+  }
 
   findFeatured(limit: number = 10) {
     return this.projectModel
@@ -201,6 +194,19 @@ export class ProjectsService {
   findProjectByTitle(title: string) {
     return this.projectModel
       .find({ deletedAt: null, title: title })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  async findSavedProjects(userId: Types.ObjectId) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new BadRequestException('User not found');
+    }
+    return this.projectModel
+      .find({ deletedAt: null, _id: { $in: user.savedProjects } }).select('id title location projectThumbnailUrl')
       .exec()
       .catch((error) => {
         throw new BadRequestException(error.message);

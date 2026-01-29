@@ -8,24 +8,27 @@ export class Developer {
   @Prop({ required: true, trim: true })
   name: string;
 
-  @Prop({ required: false , unique: true, lowercase: true})
+  @Prop({ required: false, unique: true, lowercase: true })
   email?: string;
 
-  @Prop({required: true})
+  @Prop({ required: true })
   phone: string;
 
   @Prop({ required: true })
   location: string;
+
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  userId?: Types.ObjectId;
 
   @Prop({ type: [Types.ObjectId], ref: 'Project' })
   projects: Types.ObjectId[];
 
   @Prop()
   deletedAt?: Date;
-
 }
 
 export const DeveloperSchema = SchemaFactory.createForClass(Developer);
 
 // Indexes
 DeveloperSchema.index({ name: 'text' });
+DeveloperSchema.index({ userId: 1 });
