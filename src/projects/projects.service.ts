@@ -169,6 +169,17 @@ export class ProjectsService {
       });
   }
 
+  findLatest(limit: number = 10) {
+    return this.projectModel
+      .find({ deletedAt: null })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
   findProjectByLocation(location: string) {
     return this.projectModel
       .find({ deletedAt: null, location: location })
