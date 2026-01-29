@@ -92,6 +92,7 @@ export class ProjectsController {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.projectsService.findTrending(limitNum);
   }
+  
   @Get(':id')
   findOneProject(@Param() params: MongoIdDto) {
     return this.projectsService.findOne(params.id);
