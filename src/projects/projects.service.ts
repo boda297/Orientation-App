@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
+import { CreateUpcommingProjectDto } from './dto/create-upcomming-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from './entities/project.entity';
@@ -33,6 +34,71 @@ export class ProjectsService {
     private developerService: DeveloperService,
     private s3Service: S3Service,
   ) {}
+
+  async createUpcommingProject(
+    createUpcommingProjectDto: CreateUpcommingProjectDto,
+    projectThumbnail?: Express.Multer.File,
+  ) {
+    // Verify developer exists
+    const developer = await this.developerService.findOneDeveloper(
+      createUpcommingProjectDto.developer,
+    );
+
+    if (!developer) {
+      throw new BadRequestException('Developer not found');
+    }
+
+    // Normalize slug: lowercase and replace spaces with hyphens
+    const slug = createUpcommingProjectDto.title
+      .toLowerCase()
+      .replace(/ /g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+
+    // Upload project thumbnail to S3 if provided
+    let projectThumbnailUrl: string | undefined;
+    if (projectThumbnail) {
+      const { url } = await this.s3Service.uploadFile(
+        projectThumbnail,
+        'images',
+      );
+      projectThumbnailUrl = url;
+    }
+
+    // Create project with normalized slug and status PLANNING
+    const projectData: any = {
+      ...createUpcommingProjectDto,
+      slug,
+      projectThumbnailUrl: projectThumbnailUrl,
+      status: 'PLANNING',
+      heroVideoUrl: 'PENDING',
+      script: 'PENDING', 
+    };
+
+    const project = new this.projectModel(projectData);
+
+    try {
+      // Save the project first
+      const savedProject = await project.save();
+
+      // Push project to developer's projects array
+      await this.developerModel.findByIdAndUpdate(
+        createUpcommingProjectDto.developer,
+        { $push: { projects: savedProject._id } },
+        { new: true },
+      );
+
+      return {
+        message: 'Upcoming project created successfully',
+        project: savedProject,
+      };
+    } catch (error) {
+      // Handle duplicate key error (unique constraint violation)
+      if (error.code === 11000) {
+        throw new BadRequestException('Project with this Title already exists');
+      }
+      throw new BadRequestException(error.message);
+    }
+  }
 
   async create(
     createProjectDto: CreateProjectDto,

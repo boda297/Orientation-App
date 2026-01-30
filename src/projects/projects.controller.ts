@@ -24,6 +24,7 @@ import { Roles } from 'src/roles/roles.decorator';
 import { Role } from 'src/roles/roles.enum';
 import { Types } from 'mongoose';
 import { QueryProjectDto } from './dto/query-project.dto';
+import { CreateUpcommingProjectDto } from './dto/create-upcomming-project.dto';
 
 @Controller('projects')
 export class ProjectsController {
@@ -59,6 +60,29 @@ export class ProjectsController {
       createProjectDto,
       files?.logo?.[0],
       files?.heroVideo?.[0],
+      files?.projectThumbnail?.[0],
+    );
+  }
+
+  @Post('upcomming')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'projectThumbnail', maxCount: 1 }], {
+      limits: {
+        fileSize: 1000 * 1024 * 1024, // 1GB max per file
+      },
+    }),
+  )
+  createUpcommingProject(
+    @Body() createUpcommingProjectDto: CreateUpcommingProjectDto,
+    @UploadedFiles()
+    files: {
+      projectThumbnail?: Express.Multer.File[];
+    },
+  ) {
+    return this.projectsService.createUpcommingProject(
+      createUpcommingProjectDto,
       files?.projectThumbnail?.[0],
     );
   }

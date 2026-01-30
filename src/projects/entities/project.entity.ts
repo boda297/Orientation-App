@@ -50,7 +50,7 @@ export class Project {
   @Prop({ required: true })
   heroVideoUrl: string;
 
-  @Prop({ type: String, required: false })
+  @Prop({ type: String, required: false, default: null })
   whatsappNumber?: string;
 
   @Prop({ default: 0 })
