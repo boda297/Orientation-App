@@ -107,7 +107,7 @@ export class EpisodeController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard, JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   async remove(@Param() params: MongoIdDto) {
     return this.episodeService.remove(params.id);
