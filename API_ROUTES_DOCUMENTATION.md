@@ -305,7 +305,7 @@ string; // "Hello World!"
 
 **Response**:
 
-```typescript
+````typescript
 [
   {
     _id: string;
@@ -331,8 +331,9 @@ string; // "Hello World!"
   message: string;  // "Cleaned up X unverified users with expired OTPs"
   deletedCount: number;
 }
-```
-```
+````
+
+````
 
 ---
 
@@ -340,9 +341,9 @@ string; // "Hello World!"
 
 ### POST `/users`
 
-**Description**: Create a new admin user  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
-**Required Role**: `SUPERADMIN`  
+**Description**: Create a new admin user
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `SUPERADMIN`
 **Request Body** (`CreateUserDto`):
 
 ```typescript
@@ -352,7 +353,7 @@ string; // "Hello World!"
   phoneNumber: string; // Valid phone number (required)
   password: string; // 8-20 characters, must contain: uppercase, lowercase, number, special char (required)
 }
-```
+````
 
 **Response**: User object (from service)
 
@@ -495,6 +496,42 @@ string; // "Hello World!"
 - `projectThumbnail`: File (max 1GB, single file, optional)
 
 **Response**: Project object
+
+---
+
+### GET `/projects`
+
+**Description**: List/search projects with optional filters and pagination. Main listing endpoint.  
+**Authentication**: None  
+**Query Parameters** (`QueryProjectDto`):
+
+```typescript
+{
+  developerId?: string;  // MongoDB ObjectId (optional) - filter by developer
+  location?: string;     // Optional - filter by location
+  status?: string;       // 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED'
+  title?: string;       // Optional - filter by title
+  slug?: string;        // Optional - filter by slug
+  limit?: number;       // 1-100 (optional) - page size
+  page?: number;        // min 1 (optional) - page number (used with limit)
+  sortBy?: string;      // 'newest' | 'trending' | 'saveCount' | 'viewCount' (optional)
+}
+```
+
+**Response**: Array of project objects with basic fields:
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  location: string;
+  projectThumbnailUrl: string;
+}>;
+```
+
+Results are filtered by non-deleted projects (`deletedAt: null`), optionally filtered by query params, paginated when `limit`/`page` are provided, and sorted (default: newest first).
+
+**Note**: Specific routes like `GET /projects/featured`, `GET /projects/location`, etc. must be defined before `GET /projects/:id` in the controller so they are matched correctly.
 
 ---
 
@@ -845,7 +882,7 @@ string; // "Hello World!"
 ```typescript
 {
   developerId: string; // Valid MongoDB ObjectId (required)
-  password: string;    // 8-20 chars, complex (required)
+  password: string; // 8-20 chars, complex (required)
 }
 ```
 
@@ -1153,8 +1190,8 @@ string; // "Hello World!"
 
 ```typescript
 {
-  title: string;          // Required
-  projectId: string;      // MongoDB ObjectId (required)
+  title: string; // Required
+  projectId: string; // MongoDB ObjectId (required)
 }
 ```
 
