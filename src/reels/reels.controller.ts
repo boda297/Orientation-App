@@ -31,7 +31,7 @@ export class ReelsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN , Role.DEVELOPER)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -84,7 +84,7 @@ export class ReelsController {
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -117,7 +117,7 @@ export class ReelsController {
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   removeReel(@Param() params: MongoIdDto) {
     return this.reelsService.removeReel(params.id);
   }

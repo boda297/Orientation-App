@@ -9,7 +9,6 @@ import {
   UseGuards,
   UseInterceptors,
   UploadedFile,
-  UploadedFiles,
 } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
@@ -33,7 +32,7 @@ export class FilesController {
 
   @Post('upload/inventory')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(FileInterceptor('inventory'))
   uploadFile(
     @Body() createInventoryDto: CreateInventoryDto,
@@ -50,7 +49,7 @@ export class FilesController {
 
   @Delete('inventory/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   deleteFile(@Param() params: MongoIdDto) {
     return this.filesService.deleteInventory(params.id);
   }
@@ -63,7 +62,7 @@ export class FilesController {
 
   @Patch('inventory/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(FileInterceptor('inventory'))
   updateInventory(
     @Param() params: MongoIdDto,
@@ -82,7 +81,7 @@ export class FilesController {
    */
   @Post('upload/pdf')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(FileInterceptor('PDF'))
   uploadPDF(
     @Body() createPdfDto: CreatePdfDto,
@@ -105,7 +104,7 @@ export class FilesController {
 
   @Patch('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(FileInterceptor('PDF'))
   updatePDF(
     @Param() params: MongoIdDto,
@@ -117,7 +116,7 @@ export class FilesController {
 
   @Delete('pdf/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   deletePDF(@Param() params: MongoIdDto) {
     return this.filesService.deletePDF(params.id);
   }

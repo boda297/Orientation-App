@@ -213,6 +213,15 @@ export class ProjectsService {
       });
   }
 
+  async findByDeveloper(developer: string) {
+    return this.projectModel
+      .find({ deletedAt: null, developer: developer })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
   async findOne(id: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {

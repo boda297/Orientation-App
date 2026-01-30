@@ -101,6 +101,11 @@ export class ProjectsController {
     return this.projectsService.findTrending(limitNum);
   }
 
+  @Get('developer')
+  findProjectByDeveloper(@Query('developer') developer: string) {
+    return this.projectsService.findByDeveloper(developer);
+  }
+
   @Get('saved')
   @UseGuards(JwtAuthGuard)
   findSavedProjects(@Request() req: any) {
