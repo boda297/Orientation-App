@@ -187,7 +187,7 @@ export class ProjectsService {
   findAll(query: QueryProjectDto) {
     const { developerId, location, status, title, slug, limit, page, sortBy } =
       query;
-    const mongoQuery = this.projectModel.find({ deletedAt: null }).select('id title location projectThumbnailUrl');
+    const mongoQuery = this.projectModel.find({ deletedAt: null }).select('id title location projectThumbnailUrl reels');
     if (developerId) {
       mongoQuery.where('developer').equals(developerId);
     }

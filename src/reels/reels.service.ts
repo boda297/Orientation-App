@@ -69,8 +69,7 @@ export class ReelsService {
   async findAllReels() {
     return this.reelModel
       .find()
-      .populate('projectId')
-      .populate('developerId', 'name logoUrl')
+      .select('title videoUrl thumbnail viewCount saveCount createdAt s3Key projectId')
       .sort({ createdAt: -1 });
   }
 
