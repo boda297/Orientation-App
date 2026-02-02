@@ -69,7 +69,7 @@ export class ReelsService {
   async findAllReels() {
     return this.reelModel
       .find()
-      .select('title videoUrl thumbnail viewCount saveCount createdAt s3Key projectId')
+      .select('title videoUrl thumbnail viewCount createdAt projectId')
       .sort({ createdAt: -1 });
   }
 
