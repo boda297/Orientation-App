@@ -14,10 +14,6 @@ export class CreateDeveloperDto {
   phone?: string;
 
   @IsString()
-  @IsOptional()
-  socialMediaLink?: string;
-
-  @IsString()
   @IsNotEmpty()
-  location: string;
+  location?: string;
 }

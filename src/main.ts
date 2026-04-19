@@ -15,10 +15,22 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: true,
+    // In production, restrict to the exact frontend domain.
+    // In development, allow any origin so localhost:3000, :3001, etc. all work.
+    origin: process.env.NODE_ENV === 'production' && process.env.FRONTEND_URL
+      ? [process.env.FRONTEND_URL]
+      : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    // Must include every custom header that fetchClient.ts sends
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'X-CSRF-Token',
+      'X-Device-Id',
+      'X-Reset-Token',
+    ],
   });
 
   const port = process.env.PORT || 3000;

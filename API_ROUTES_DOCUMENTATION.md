@@ -369,6 +369,50 @@ string; // "Hello World!"
 
 ---
 
+### GET `/users/saved-projects`
+
+**Description**: Get projects saved by the current user
+**Authentication**: Required (`AuthGuard`)
+**Required Role**: Any authenticated user
+**Request**: None
+**Note**: User ID is extracted from JWT token (`req.user.sub`)
+**Response**: 
+
+```typescript
+{
+  message: string; // "Saved projects retrieved successfully"
+  savedProjects: Array<{
+    _id: string;
+    title: string;
+    projectThumbnailUrl: string;
+  }>;
+}
+```
+
+---
+
+### GET `/users/saved-reels`
+
+**Description**: Get reels saved by the current user
+**Authentication**: Required (`AuthGuard`)
+**Required Role**: Any authenticated user
+**Request**: None
+**Note**: User ID is extracted from JWT token (`req.user.sub`)
+**Response**: 
+
+```typescript
+{
+  message: string; // "Saved reels retrieved successfully"
+  savedReels: Array<{
+    _id: string;
+    title: string;
+    reelThumbnailUrl: string;
+  }>;
+}
+```
+
+---
+
 ### GET `/users/profile`
 
 **Description**: Get current user profile
@@ -499,6 +543,37 @@ string; // "Hello World!"
 
 ---
 
+### POST `/projects/upcomming`
+
+**Description**: Create a new upcoming project
+**Authentication**: Required (`AuthGuard`, `RolesGuard`)
+**Required Role**: `SUPERADMIN` or `ADMIN`
+**Request Type**: `multipart/form-data`
+**Request Body** (`CreateUpcommingProjectDto`):
+
+```typescript
+{
+  title: string;                    // Required
+  developer: string;                // MongoDB ObjectId (required)
+  location: string;                 // Required
+}
+```
+
+**Files**:
+
+- `projectThumbnail`: File (max 1GB, single file, optional)
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Upcoming project created successfully"
+  project: Project; // The created project object
+}
+```
+
+---
+
 ### GET `/projects`
 
 **Description**: List/search projects with optional filters and pagination. Main listing endpoint.  
@@ -590,6 +665,38 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 ```
 
 **Response**: Array of featured project objects (title, logoUrl, projectThumbnailUrl, location)
+
+---
+
+### GET `/projects/latest`
+
+**Description**: Get latest projects
+**Authentication**: None
+**Query Parameters**:
+
+```typescript
+{
+  limit?: string;  // Converted to number, default: 10
+}
+```
+
+**Response**: Array of latest project objects
+
+---
+
+### GET `/projects/developer`
+
+**Description**: Get projects by developer
+**Authentication**: None
+**Query Parameters**:
+
+```typescript
+{
+  developer: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Response**: Array of project objects belonging to the developer
 
 ---
 
@@ -1183,31 +1290,52 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 ### POST `/reels`
 
 **Description**: Upload a new reel with video and thumbnail  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
-**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN`, `SUPERADMIN`, or `DEVELOPER`  
 **Request Type**: `multipart/form-data`  
 **Request Body** (`CreateReelDto`):
 
 ```typescript
 {
-  title: string; // Required
-  projectId: string; // MongoDB ObjectId (required)
+  title: string;      // 2-100 characters (required)
+  projectId: string;  // Valid MongoDB ObjectId (required)
 }
 ```
 
 **Files**:
 
 - `file`: Video file (max 5GB, required)
+  - Field name: `file`
+  - Max count: 1
 - `thumbnail`: Thumbnail image file (required)
+  - Field name: `thumbnail`
+  - Max count: 1
 
 **Response**:
 
 ```typescript
 {
   message: string; // "Reel uploaded successfully"
-  reel: Reel; // Created reel object
+  reel: {
+    _id: string;
+    title: string;
+    videoUrl: string;           // S3 CloudFront URL
+    thumbnail: string;          // S3 CloudFront URL
+    projectId: string;          // MongoDB ObjectId
+    developerId: string;        // MongoDB ObjectId (auto-populated from JWT)
+    viewCount: number;          // Default: 0
+    saveCount: number;          // Default: 0
+    s3Key: string;              // S3 object key for video
+    createdAt: Date;
+    updatedAt: Date;
+  }
 }
 ```
+
+**Error Responses**:
+
+- `400 Bad Request`: "Video file is required"
+- `400 Bad Request`: "Thumbnail file is required"
 
 ---
 
@@ -1216,14 +1344,30 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 **Description**: Get all reels  
 **Authentication**: None  
 **Request**: None  
-**Response**: Array of reel objects
+**Response**: 
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  videoUrl: string;           // S3 CloudFront URL
+  thumbnail: string;          // S3 CloudFront URL
+  projectId: string | Project; // May be populated
+  developerId: string | Developer; // May be populated
+  viewCount: number;
+  saveCount: number;
+  s3Key: string;
+  createdAt: Date;
+  updatedAt: Date;
+}>
+```
 
 ---
 
 ### GET `/reels/saved`
 
 **Description**: Get all reels saved by the current user  
-**Authentication**: Required (`AuthGuard`)  
+**Authentication**: Required (`JwtAuthGuard`)  
 **Required Role**: Any authenticated user  
 **Request**: None  
 **Note**: User ID is extracted from JWT token (`req.user.sub`)
@@ -1233,7 +1377,16 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 ```typescript
 {
   message: string; // "Saved reels fetched successfully"
-  reels: Array<{ _id: string; title: string; thumbnail: string }>;
+  reels: Array<{
+    _id: string;
+    title: string;
+    videoUrl: string;
+    thumbnail: string;
+    projectId: string | Project;
+    developerId: string | Developer;
+    viewCount: number;
+    saveCount: number;
+  }>;
 }
 ```
 
@@ -1241,7 +1394,7 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ### GET `/reels/:id`
 
-**Description**: Get a reel by ID  
+**Description**: Get a single reel by ID  
 **Authentication**: None  
 **Route Parameters** (`MongoIdDto`):
 
@@ -1251,15 +1404,32 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Reel object
+**Response**: 
+
+```typescript
+{
+  _id: string;
+  title: string;
+  videoUrl: string;           // S3 CloudFront URL
+  thumbnail: string;          // S3 CloudFront URL
+  projectId: string | Project; // May be populated
+  developerId: string | Developer; // May be populated
+  viewCount: number;
+  saveCount: number;
+  s3Key: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
 
 ---
 
 ### PATCH `/reels/:id`
 
-**Description**: Update a reel  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
-**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Description**: Update a reel (supports updating metadata and/or replacing video/thumbnail files)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN`, `SUPERADMIN`, or `DEVELOPER`  
+**Request Type**: `multipart/form-data`  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -1272,20 +1442,52 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  title?: string;
-  projectId?: string;     // MongoDB ObjectId
+  title?: string;      // 2-100 characters (optional)
+  projectId?: string;  // Valid MongoDB ObjectId (optional)
 }
 ```
 
-**Response**: Updated reel object
+**Files** (all optional):
+
+- `file`: Video file (max 5GB, optional)
+  - If provided, replaces the existing video file in S3
+  - Field name: `file`
+  - Max count: 1
+- `thumbnail`: Thumbnail image file (optional)
+  - If provided, replaces the existing thumbnail in S3
+  - Field name: `thumbnail`
+  - Max count: 1
+
+**Response**: 
+
+```typescript
+{
+  message: string; // "Reel updated successfully"
+  reel: {
+    _id: string;
+    title: string;
+    videoUrl: string;           // Updated S3 CloudFront URL (if file was replaced)
+    thumbnail: string;          // Updated S3 CloudFront URL (if thumbnail was replaced)
+    projectId: string;
+    developerId: string;
+    viewCount: number;
+    saveCount: number;
+    s3Key: string;              // Updated S3 key (if file was replaced)
+    createdAt: Date;
+    updatedAt: Date;
+  }
+}
+```
+
+**Note**: When new files are uploaded, old files are automatically deleted from S3.
 
 ---
 
 ### DELETE `/reels/:id`
 
-**Description**: Delete a reel  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
-**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Description**: Delete a reel (removes from database and deletes files from S3)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN`, `SUPERADMIN`, or `DEVELOPER`  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -1298,16 +1500,18 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  message: string; // Deletion confirmation message
+  message: string; // "Reel deleted successfully"
 }
 ```
+
+**Note**: Both the video file and thumbnail are automatically deleted from S3.
 
 ---
 
 ### POST `/reels/:id/save`
 
-**Description**: Save a reel to user's saved reels  
-**Authentication**: Required (`AuthGuard`)  
+**Description**: Save a reel to the current user's saved reels collection  
+**Authentication**: Required (`JwtAuthGuard`)  
 **Required Role**: Any authenticated user  
 **Route Parameters** (`MongoIdDto`):
 
@@ -1323,7 +1527,12 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  message: string; // Success message
+  message: string; // "Reel saved successfully"
+  reel: {
+    _id: string;
+    saveCount: number; // Incremented by 1
+    // ... other reel fields
+  }
 }
 ```
 
@@ -1331,8 +1540,8 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ### POST `/reels/:id/unsave`
 
-**Description**: Remove a reel from user's saved reels  
-**Authentication**: Required (`AuthGuard`)  
+**Description**: Remove a reel from the current user's saved reels collection  
+**Authentication**: Required (`JwtAuthGuard`)  
 **Required Role**: Any authenticated user  
 **Route Parameters** (`MongoIdDto`):
 
@@ -1348,7 +1557,12 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  message: string; // Success message
+  message: string; // "Reel unsaved successfully"
+  reel: {
+    _id: string;
+    saveCount: number; // Decremented by 1
+    // ... other reel fields
+  }
 }
 ```
 

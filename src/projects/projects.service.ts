@@ -64,6 +64,10 @@ export class ProjectsService {
       projectThumbnailUrl = url;
     }
 
+    if (!projectThumbnailUrl) {
+      throw new BadRequestException('Project thumbnail is required');
+    }
+
     // Create project with normalized slug and status PLANNING
     const projectData: any = {
       ...createUpcommingProjectDto,
@@ -147,6 +151,10 @@ export class ProjectsService {
         'images',
       );
       projectThumbnailUrl = url;
+    }
+
+    if (!projectThumbnailUrl) {
+      throw new BadRequestException('Project thumbnail is required');
     }
 
     // Create project with normalized slug

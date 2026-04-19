@@ -6,10 +6,8 @@ import {
   IsMongoId,
   IsBoolean,
   IsPhoneNumber,
-  IsNumber,
-  IsDate,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { Types } from 'mongoose';
 
 export class CreateProjectDto {
@@ -35,6 +33,11 @@ export class CreateProjectDto {
   @IsNotEmpty()
   location: string;
 
+  @Transform(({ value }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
   @IsBoolean()
   @IsOptional()
   featured?: boolean;
@@ -67,6 +70,11 @@ export class CreateProjectDto {
   @IsOptional()
   whatsappNumber?: string;
 
+  @Transform(({ value }) => {
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return value;
+  })
   @IsBoolean()
   @IsOptional()
   published?: boolean;

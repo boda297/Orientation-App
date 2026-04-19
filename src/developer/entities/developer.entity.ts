@@ -11,10 +11,10 @@ export class Developer {
   @Prop({ required: false, unique: true, lowercase: true })
   email?: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: null })
   phone: string;
 
-  @Prop({ required: true })
+  @Prop({ required: false, default: null })
   location: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User', default: null })
