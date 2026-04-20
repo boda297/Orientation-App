@@ -303,7 +303,7 @@ export class ProjectsService {
     }
     await project.populate([
       { path: 'developer', select: 'name logoUrl' },
-      { path: 'episodes', select: 'title thumbnail episodeUrl' },
+      { path: 'episodes', select: 'title thumbnail episodeUrl duration episodeOrder' },
       { path: 'reels', select: 'videoUrl thumbnail title' },
       { path: 'inventory', select: 'title inventoryUrl' },
       { path: 'pdf', select: 'title pdfUrl' },
