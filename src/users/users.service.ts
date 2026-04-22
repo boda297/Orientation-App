@@ -28,6 +28,7 @@ export class UsersService {
       ...createUserDto,
       email: normalizeEmail(createUserDto.email),
       password,
+      isEmailVerified: true,
     });
     return await user
       .save()

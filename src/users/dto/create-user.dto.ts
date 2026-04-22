@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsPhoneNumber,
   IsString,
   Matches,
@@ -17,21 +18,13 @@ export class CreateUserDto {
   @IsNotEmpty()
   email: string;
 
-  @IsNotEmpty()
+  @IsOptional()
   @IsPhoneNumber()
-  phoneNumber: string;
-
+  phoneNumber?: string;
 
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(20)
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-    {
-      message:
-        'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number and one special character',
-    },
-  )
   password: string;
 }
