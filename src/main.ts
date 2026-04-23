@@ -1,10 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
+import * as express from 'express';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
+
+  // Increase body size limit for large video/file uploads
+  app.use(express.json({ limit: '2gb' }));
+  app.use(express.urlencoded({ limit: '2gb', extended: true }));
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -15,19 +20,9 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    // In production, restrict to known frontend domains.
-    // In development, allow any origin so localhost:3000, :3001, etc. all work.
-    origin: process.env.NODE_ENV === 'production'
-      ? [
-          'https://orientationapps.com',
-          'https://www.orientationapps.com',
-          'https://admin.orientationapps.com',
-          process.env.FRONTEND_URL,
-        ].filter(Boolean)
-      : true,
+    origin: true, // Allow all origins
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'],
-    // Must include every custom header that fetchClient.ts sends
     allowedHeaders: [
       'Content-Type',
       'Authorization',
@@ -35,13 +30,11 @@ async function bootstrap() {
       'X-CSRF-Token',
       'X-Device-Id',
       'X-Reset-Token',
-      'Origin',
-      'X-Requested-With',
     ],
   });
 
   const port = process.env.PORT || 3000;
-  await app.listen(port, '0.0.0.0'); // Listen on all network interfaces
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`Application running on port ${port}`);
 }
