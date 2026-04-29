@@ -39,19 +39,7 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-## Running tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
 ## License
 
-This project is UNLICENSED.
+This project is proprietary and confidential. Unauthorised copying, distribution, or modification of this codebase is strictly prohibited. All videos, media, and content served through this platform are the property of Aziz Film/ FBM Team.
+© 2026 FBM Team. All Rights Reserved.

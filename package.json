@@ -1,8 +1,8 @@
 {
-  "name": "backend",
-  "version": "0.0.1",
+  "name": "orientation-app-backend",
+  "version": "1.0",
   "description": "",
-  "author": "",
+  "author": "Abdelrahman sedky",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
