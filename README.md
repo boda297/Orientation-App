@@ -115,14 +115,6 @@ npm run start
 
 ---
 
-### First-time Setup
-
-1. Register an account through `/register`.
-2. In MongoDB, manually set `role: "superadmin"` on that user document.
-3. Log in and navigate to `/dashboard` to create developers and projects.
-
----
-
 ## License
 
 This project and all associated video content are proprietary.
