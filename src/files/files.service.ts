@@ -48,7 +48,7 @@ export class FilesService {
       s3Key: key,
       inventoryUrl: url,
     });
-    await inventory.populate('project', 'title slug')
+    await inventory.populate('project', 'title slug');
     await inventory.populate('developer', 'name logoUrl');
     return {
       message: 'Inventory uploaded successfully',
@@ -86,7 +86,7 @@ export class FilesService {
     );
 
     // populate project and developer
-    await pdf.populate('project', 'title slug')
+    await pdf.populate('project', 'title slug');
     await pdf.populate('developer', 'name logoUrl');
     return {
       message: 'PDF uploaded successfully',
@@ -215,7 +215,9 @@ export class FilesService {
       // Delete old file from S3
       if (inventory.s3Key) {
         await this.s3Service.deleteFile(inventory.s3Key);
-        this.logger.log(`Deleted old inventory file from S3: ${inventory.s3Key}`);
+        this.logger.log(
+          `Deleted old inventory file from S3: ${inventory.s3Key}`,
+        );
       }
 
       s3Key = key;

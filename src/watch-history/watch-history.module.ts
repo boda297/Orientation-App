@@ -18,4 +18,3 @@ import { WatchHistoryController } from './watch-history.controller';
   exports: [WatchHistoryService],
 })
 export class WatchHistoryModule {}
-

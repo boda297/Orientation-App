@@ -46,4 +46,3 @@ export class UpdateWatchProgressDto {
   @Max(100000)
   episode?: number;
 }
-

@@ -31,7 +31,7 @@ export class ReelsController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN , Role.DEVELOPER)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(
     FileFieldsInterceptor(
       [

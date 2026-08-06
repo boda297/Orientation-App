@@ -4,7 +4,7 @@ import {
   IsMongoId,
   MinLength,
   MaxLength,
-  Matches,
+  IsEmail,
 } from 'class-validator';
 
 export class CreateDeveloperAccountDto {
@@ -12,16 +12,13 @@ export class CreateDeveloperAccountDto {
   @IsNotEmpty()
   developerId: string;
 
+  @IsEmail()
+  @IsNotEmpty()
+  email: string;
+
   @IsString()
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(20)
-  @Matches(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
-    {
-      message:
-        'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number and one special character',
-    },
-  )
   password: string;
 }

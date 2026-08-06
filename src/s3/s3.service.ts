@@ -56,7 +56,7 @@ export class S3Service {
     }
 
     // Extract file extension safely
-    let fileExtension =
+    const fileExtension =
       file.originalname.split('.').pop()?.toLowerCase() || 'mp4';
 
     // Validate MIME type and extension for video files
@@ -160,8 +160,20 @@ export class S3Service {
     }
   }
 
-  async deleteFile(key: string): Promise<void> {
+  async deleteFile(keyOrUrl: string): Promise<void> {
     try {
+      let key = keyOrUrl;
+      // Extract key if full CloudFront or HTTP URL is passed
+      if (this.cloudFrontUrl && keyOrUrl.includes(this.cloudFrontUrl)) {
+        key = keyOrUrl.replace(`${this.cloudFrontUrl}/`, '');
+      } else if (
+        keyOrUrl.startsWith('http://') ||
+        keyOrUrl.startsWith('https://')
+      ) {
+        const urlObj = new URL(keyOrUrl);
+        key = urlObj.pathname.substring(1);
+      }
+
       const command = new DeleteObjectCommand({
         Bucket: this.bucketName,
         Key: key,

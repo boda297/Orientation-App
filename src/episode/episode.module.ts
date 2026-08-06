@@ -7,7 +7,11 @@ import { Project, ProjectSchema } from 'src/projects/entities/project.entity';
 import { S3Module } from 'src/s3/s3.module';
 
 @Module({
-  imports: [ MongooseModule.forFeature([{ name: Episode.name, schema: EpisodeSchema }]), MongooseModule.forFeature([{ name: Project.name, schema: ProjectSchema }]), S3Module],
+  imports: [
+    MongooseModule.forFeature([{ name: Episode.name, schema: EpisodeSchema }]),
+    MongooseModule.forFeature([{ name: Project.name, schema: ProjectSchema }]),
+    S3Module,
+  ],
   controllers: [EpisodeController],
   providers: [EpisodeService],
 })

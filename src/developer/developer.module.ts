@@ -17,6 +17,9 @@ import {
 import { File, FileSchema } from 'src/files/entities/file.entity';
 import { EmailModule } from 'src/email/email.module';
 
+import { DeveloperOwnershipService } from './services/developer-ownership.service';
+import { DeveloperOwnershipGuard } from './guards/developer-ownership.guard';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -33,7 +36,17 @@ import { EmailModule } from 'src/email/email.module';
     EmailModule,
   ],
   controllers: [DeveloperController],
-  providers: [DeveloperService, DeveloperAuthService],
-  exports: [DeveloperService, DeveloperAuthService],
+  providers: [
+    DeveloperService,
+    DeveloperAuthService,
+    DeveloperOwnershipService,
+    DeveloperOwnershipGuard,
+  ],
+  exports: [
+    DeveloperService,
+    DeveloperAuthService,
+    DeveloperOwnershipService,
+    DeveloperOwnershipGuard,
+  ],
 })
 export class DeveloperModule {}

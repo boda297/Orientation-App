@@ -142,8 +142,6 @@ export class ProjectsController {
     return this.projectsService.findOne(params.id);
   }
 
-
-
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)

@@ -29,7 +29,8 @@ export class ProjectsService {
     @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
     @InjectModel(Episode.name) private episodeModel: Model<EpisodeDocument>,
     @InjectModel(Reel.name) private reelModel: Model<ReelDocument>,
-    @InjectModel(Inventory.name) private inventoryModel: Model<InventoryDocument>,
+    @InjectModel(Inventory.name)
+    private inventoryModel: Model<InventoryDocument>,
     @InjectModel(File.name) private fileModel: Model<FileDocument>,
     private developerService: DeveloperService,
     private s3Service: S3Service,
@@ -75,7 +76,7 @@ export class ProjectsService {
       projectThumbnailUrl: projectThumbnailUrl,
       status: 'PLANNING',
       heroVideoUrl: 'PENDING',
-      script: 'PENDING', 
+      script: 'PENDING',
     };
 
     const project = new this.projectModel(projectData);
@@ -195,7 +196,9 @@ export class ProjectsService {
   findAll(query: QueryProjectDto) {
     const { developerId, location, status, title, slug, limit, page, sortBy } =
       query;
-    const mongoQuery = this.projectModel.find({ deletedAt: null }).select('id title location projectThumbnailUrl reels');
+    const mongoQuery = this.projectModel
+      .find({ deletedAt: null })
+      .select('id title location projectThumbnailUrl reels');
     if (developerId) {
       mongoQuery.where('developer').equals(developerId);
     }
@@ -268,6 +271,22 @@ export class ProjectsService {
   findProjectByTitle(title: string) {
     return this.projectModel
       .find({ deletedAt: null, title: title })
+      .collation({ locale: 'en', strength: 2 })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  /**
+   * Performs high-speed MongoDB $text index search across title, location, and script
+   */
+  searchProjects(query: string) {
+    return this.projectModel
+      .find({
+        $text: { $search: query },
+        deletedAt: null,
+      })
       .exec()
       .catch((error) => {
         throw new BadRequestException(error.message);
@@ -280,7 +299,8 @@ export class ProjectsService {
       throw new BadRequestException('User not found');
     }
     return this.projectModel
-      .find({ deletedAt: null, _id: { $in: user.savedProjects } }).select('id title location projectThumbnailUrl')
+      .find({ deletedAt: null, _id: { $in: user.savedProjects } })
+      .select('id title location projectThumbnailUrl')
       .exec()
       .catch((error) => {
         throw new BadRequestException(error.message);
@@ -303,7 +323,10 @@ export class ProjectsService {
     }
     await project.populate([
       { path: 'developer', select: 'name logoUrl' },
-      { path: 'episodes', select: 'title thumbnail episodeUrl duration episodeOrder' },
+      {
+        path: 'episodes',
+        select: 'title thumbnail episodeUrl duration episodeOrder',
+      },
       { path: 'reels', select: 'videoUrl thumbnail title' },
       { path: 'inventory', select: 'title inventoryUrl' },
       { path: 'pdf', select: 'title pdfUrl' },

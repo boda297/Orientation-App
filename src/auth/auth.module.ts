@@ -49,4 +49,3 @@ import { TokenService } from './services/token.service';
   exports: [JwtAuthGuard, JwtStrategy, OtpService, TokenService],
 })
 export class AuthModule {}
-

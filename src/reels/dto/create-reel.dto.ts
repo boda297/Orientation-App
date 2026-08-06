@@ -21,5 +21,4 @@ export class CreateReelDto {
   @IsMongoId()
   @Type(() => Types.ObjectId)
   projectId: Types.ObjectId;
-
 }

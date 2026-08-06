@@ -240,7 +240,9 @@ export class ReelsService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    const reels = await this.reelModel.find({ _id: { $in: user.savedReels } }).select('id title thumbnail');
+    const reels = await this.reelModel
+      .find({ _id: { $in: user.savedReels } })
+      .select('id title thumbnail');
     return {
       message: 'Saved reels fetched successfully',
       reels,

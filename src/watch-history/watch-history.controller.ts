@@ -43,7 +43,11 @@ export class WatchHistoryController {
       new Types.ObjectId(userId),
       limit ? parseInt(limit, 10) : 10,
     );
-    return { message: 'Continue watching list fetched successfully', items, count };
+    return {
+      message: 'Continue watching list fetched successfully',
+      items,
+      count,
+    };
   }
 
   @Get()
@@ -71,7 +75,11 @@ export class WatchHistoryController {
       new Types.ObjectId(userId),
       limit ? parseInt(limit, 10) : 10,
     );
-    return { message: 'Recently watched content fetched successfully', items, count };
+    return {
+      message: 'Recently watched content fetched successfully',
+      items,
+      count,
+    };
   }
 
   @Get('content/:contentId')
@@ -117,4 +125,3 @@ export class WatchHistoryController {
     return { message: 'Watch history cleared successfully' };
   }
 }
-

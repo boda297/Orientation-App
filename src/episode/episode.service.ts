@@ -133,7 +133,10 @@ export class EpisodeService {
       // Delete old thumbnail from S3 if it exists
       if (episode.thumbnail) {
         // Extract S3 key from thumbnail URL
-        const oldThumbnailKey = episode.thumbnail.split('/').slice(-2).join('/');
+        const oldThumbnailKey = episode.thumbnail
+          .split('/')
+          .slice(-2)
+          .join('/');
         if (oldThumbnailKey.startsWith('images/')) {
           await this.s3Service.deleteFile(oldThumbnailKey);
           this.logger.log(`Deleted old thumbnail from S3: ${oldThumbnailKey}`);

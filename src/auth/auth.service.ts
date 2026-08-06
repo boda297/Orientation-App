@@ -11,7 +11,6 @@ import { TokenService } from './services/token.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
-import { normalizeEmail } from './utils/normalize-email';
 
 @Injectable()
 export class AuthService {
@@ -26,7 +25,7 @@ export class AuthService {
    * Login user and return access + refresh tokens
    */
   async login(loginDto: LoginDto, deviceInfo?: string, ipAddress?: string) {
-    const email = normalizeEmail(loginDto.email);
+    const email = loginDto.email;
     const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -90,9 +89,9 @@ export class AuthService {
    * Register new user and send verification OTP
    */
   async register(registerDto: RegisterDto) {
-    const email = normalizeEmail(registerDto.email);
+    const email = registerDto.email;
     const userExists = await this.usersService.findByEmail(email);
-    
+
     // If user exists and email is already verified, throw error
     if (userExists && userExists.isEmailVerified) {
       throw new ConflictException('Email already registered');
@@ -158,8 +157,7 @@ export class AuthService {
    * Verify email with OTP
    */
   async verifyEmail(email: string, otp: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -196,8 +194,7 @@ export class AuthService {
    * Resend verification OTP
    */
   async resendVerificationOTP(email: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -216,7 +213,7 @@ export class AuthService {
       emailVerificationOTPExpires: otpExpires,
     });
 
-    await this.emailService.sendVerificationOTP(normalizedEmail, otp);
+    await this.emailService.sendVerificationOTP(email, otp);
 
     return {
       success: true,
@@ -228,8 +225,7 @@ export class AuthService {
    * Forgot password - send reset OTP
    */
   async forgotPassword(email: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       // Don't reveal if user exists for security
@@ -248,7 +244,7 @@ export class AuthService {
       passwordResetOTPExpires: otpExpires,
     });
 
-    await this.emailService.sendPasswordResetOTP(normalizedEmail, otp);
+    await this.emailService.sendPasswordResetOTP(email, otp);
 
     return {
       success: true,
@@ -260,8 +256,7 @@ export class AuthService {
    * Verify reset OTP (optional - verify before allowing password change)
    */
   async verifyResetOTP(email: string, otp: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -287,8 +282,7 @@ export class AuthService {
    * Reset password with OTP
    */
   async resetPassword(email: string, otp: string, newPassword: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -332,9 +326,8 @@ export class AuthService {
     ipAddress?: string,
   ) {
     // Verify and check reuse via TokenService
-    const { payload, storedToken } = await this.tokenService.verifyRefreshToken(
-      refreshToken,
-    );
+    const { payload, storedToken } =
+      await this.tokenService.verifyRefreshToken(refreshToken);
 
     // Delete the old refresh token (single-use)
     await this.tokenService.deleteRefreshToken(storedToken._id.toString());

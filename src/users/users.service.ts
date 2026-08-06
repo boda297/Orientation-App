@@ -9,16 +9,12 @@ import { Model, Types } from 'mongoose';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
-import { CreateDeveloperDto } from './dto/create-developer.dto';
-import { escapeRegExp, normalizeEmail } from '../auth/utils/normalize-email';
-// import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class UsersService {
-  constructor(
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-  ) {}
+  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
 
+  // Create a new user
   async create(createUserDto: CreateUserDto) {
     const password = createUserDto.password.startsWith('$2b$')
       ? createUserDto.password
@@ -26,7 +22,7 @@ export class UsersService {
 
     const user = new this.userModel({
       ...createUserDto,
-      email: normalizeEmail(createUserDto.email),
+      email: createUserDto.email,
       password,
       isEmailVerified: true,
     });
@@ -43,6 +39,7 @@ export class UsersService {
       });
   }
 
+  // Get all users
   async findAll() {
     return await this.userModel
       .find()
@@ -57,6 +54,7 @@ export class UsersService {
       });
   }
 
+  // Find user by ID
   async findOne(id: Types.ObjectId) {
     try {
       const user = await this.userModel.findById(id);
@@ -77,18 +75,16 @@ export class UsersService {
     }
   }
 
+  // Find user by email
   async findByEmail(email: string) {
-    const normalized = normalizeEmail(email);
-    // Case-insensitive exact match (handles old records saved with different casing)
-    const user = await this.userModel.findOne({
-      email: { $regex: `^${escapeRegExp(normalized)}$`, $options: 'i' },
-    });
+    const user = await this.userModel.findOne({ email });
     if (!user) {
       return null;
     }
     return user;
   }
 
+  // Find user by ID
   async findById(id: string) {
     const user = await this.userModel.findById(id);
     if (!user) {
@@ -97,6 +93,7 @@ export class UsersService {
     return user;
   }
 
+  // Get current user's saved projects
   async getSavedProjects(userId: Types.ObjectId) {
     try {
       const user = await this.userModel
@@ -119,7 +116,7 @@ export class UsersService {
     }
   }
 
-
+  // Get current user's saved reels
   async getSavedReels(userId: Types.ObjectId) {
     try {
       const user = await this.userModel
@@ -142,9 +139,7 @@ export class UsersService {
     }
   }
 
-  /**
-   * Update OTP fields for email verification or password reset
-   */
+  // Update OTP fields for email verification or password reset
   async updateOTP(
     id: string,
     otpData: {
@@ -164,9 +159,7 @@ export class UsersService {
     return user;
   }
 
-  /**
-   * Update user password
-   */
+  // Update user password
   async updatePassword(id: string, hashedPassword: string) {
     const user = await this.userModel.findByIdAndUpdate(
       id,
@@ -179,6 +172,7 @@ export class UsersService {
     return user;
   }
 
+  // Update user by ID
   async update(id: Types.ObjectId, updateUserDto: UpdateUserDto) {
     try {
       const user = await this.userModel.findByIdAndUpdate(id, updateUserDto, {
@@ -202,6 +196,7 @@ export class UsersService {
     }
   }
 
+  // Update user profile by ID
   async updateprofile(id: Types.ObjectId, updateUserDto: UpdateUserDto) {
     try {
       const user = await this.userModel.findByIdAndUpdate(id, updateUserDto, {
@@ -222,6 +217,7 @@ export class UsersService {
     }
   }
 
+  // Delete user by ID
   async remove(id: Types.ObjectId) {
     try {
       const user = await this.userModel.findByIdAndDelete(id);
@@ -242,10 +238,7 @@ export class UsersService {
     }
   }
 
-  /**
-   * Delete unverified users whose OTP has expired
-   * Returns the number of deleted users
-   */
+  // Delete unverified users whose OTP has expired
   async deleteUnverifiedExpiredUsers() {
     const now = new Date();
     const result = await this.userModel.deleteMany({

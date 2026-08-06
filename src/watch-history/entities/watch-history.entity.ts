@@ -48,4 +48,3 @@ export const WatchHistorySchema = SchemaFactory.createForClass(WatchHistory);
 // Each user can only have one entry per contentId
 WatchHistorySchema.index({ userId: 1, contentId: 1 }, { unique: true });
 WatchHistorySchema.index({ userId: 1, lastWatchedAt: -1 });
-

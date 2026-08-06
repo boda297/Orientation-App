@@ -21,6 +21,7 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
+import { Throttle } from '@nestjs/throttler';
 
 interface AuthenticatedRequest extends Request {
   user?: JwtPayload;
@@ -35,6 +36,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto, @Req() req: AuthenticatedRequest) {
     const deviceInfo = req.headers['user-agent'];
@@ -47,6 +49,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.CREATED)
   register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
@@ -82,6 +85,7 @@ export class AuthController {
   }
 
   @Get('sessions')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   getActiveSessions(@CurrentUser('sub') userId: string) {
     return this.authService.getActiveSessions(userId);
   }
@@ -90,6 +94,7 @@ export class AuthController {
 
   @Public()
   @Post('verify-email')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
     return this.authService.verifyEmail(
@@ -100,6 +105,7 @@ export class AuthController {
 
   @Public()
   @Post('resend-verification')
+  @Throttle({ default: { limit: 3, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   resendVerificationOTP(@Body() resendDto: ResendVerificationDto) {
     return this.authService.resendVerificationOTP(resendDto.email);
@@ -109,6 +115,7 @@ export class AuthController {
 
   @Public()
   @Post('forgot-password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
     return this.authService.forgotPassword(forgotPasswordDto.email);
@@ -116,6 +123,7 @@ export class AuthController {
 
   @Public()
   @Post('verify-reset-otp')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   verifyResetOTP(@Body() verifyEmailDto: VerifyEmailDto) {
     return this.authService.verifyResetOTP(
@@ -126,6 +134,7 @@ export class AuthController {
 
   @Public()
   @Post('reset-password')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(
@@ -143,9 +152,9 @@ export class AuthController {
    */
   @Public()
   @Post('cleanup-unverified')
+  @Throttle({ default: { limit: 1, ttl: 3600000 } })
   @HttpCode(HttpStatus.OK)
   cleanupUnverifiedUsers() {
     return this.authService.cleanupUnverifiedUsers();
   }
 }
-

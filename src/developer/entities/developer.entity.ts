@@ -30,5 +30,9 @@ export class Developer {
 export const DeveloperSchema = SchemaFactory.createForClass(Developer);
 
 // Indexes
-DeveloperSchema.index({ name: 'text' });
+DeveloperSchema.index(
+  { name: 1 },
+  { collation: { locale: 'en', strength: 2 } },
+);
+DeveloperSchema.index({ name: 'text', location: 'text' });
 DeveloperSchema.index({ userId: 1 });
