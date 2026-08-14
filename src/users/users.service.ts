@@ -16,22 +16,14 @@ export class UsersService {
 
   // Create a new user
   async create(createUserDto: CreateUserDto) {
-    const password = createUserDto.password.startsWith('$2b$')
-      ? createUserDto.password
-      : await bcrypt.hash(createUserDto.password, 10);
-
-    const user = new this.userModel({
-      ...createUserDto,
-      email: createUserDto.email,
-      password,
-      isEmailVerified: true,
-    });
+    const user = new this.userModel(createUserDto);
     return await user
       .save()
       .then((user) => {
+        const { password, ...userWithoutPassword } = user.toObject();
         return {
           message: 'User created successfully',
-          user,
+          user: userWithoutPassword,
         };
       })
       .catch((error) => {
@@ -54,10 +46,10 @@ export class UsersService {
       });
   }
 
-  // Find user by ID
-  async findOne(id: Types.ObjectId) {
+  // Find user by ID (returns user ID only)
+  async findOne(id: string | Types.ObjectId) {
     try {
-      const user = await this.userModel.findById(id);
+      const user = await this.userModel.findById(id).select('_id');
 
       if (!user) {
         throw new NotFoundException('User not found');
@@ -65,7 +57,7 @@ export class UsersService {
 
       return {
         message: 'User fetched successfully',
-        user,
+        id: user._id,
       };
     } catch (error) {
       if (error instanceof NotFoundException) {
@@ -85,7 +77,7 @@ export class UsersService {
   }
 
   // Find user by ID
-  async findById(id: string) {
+  async findById(id: Types.ObjectId) {
     const user = await this.userModel.findById(id);
     if (!user) {
       return null;
@@ -249,5 +241,20 @@ export class UsersService {
     return {
       deletedCount: result.deletedCount || 0,
     };
+  }
+
+  async updateHashedRefreshToken(
+    id: Types.ObjectId,
+    hashedRefreshToken: string | null,
+  ) {
+    const user = await this.userModel.findByIdAndUpdate(
+      id,
+      { hashedRefreshToken },
+      { new: true },
+    );
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return user;
   }
 }

@@ -12,8 +12,8 @@ import {
   Inventory,
   InventoryDocument,
 } from 'src/files/entities/inventory.entity';
-import { Role } from 'src/roles/roles.enum';
-import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
+import { Role } from 'src/auth/enum/roles.enum';
+import { AuthJwtPayload } from 'src/auth/types/auth-jwtPayload';
 
 @Injectable()
 export class DeveloperOwnershipService {
@@ -46,7 +46,7 @@ export class DeveloperOwnershipService {
    * Admins and Superadmins bypass ownership checks.
    */
   async verifyDeveloperOwnership(
-    user: JwtPayload,
+    user: AuthJwtPayload,
     targetDeveloperId: string | Types.ObjectId,
   ): Promise<DeveloperDoc> {
     const targetObjectId =
@@ -91,7 +91,7 @@ export class DeveloperOwnershipService {
    * Verifies if the current user owns a project resource by project ID.
    */
   async verifyProjectOwnership(
-    user: JwtPayload,
+    user: AuthJwtPayload,
     projectId: string | Types.ObjectId,
   ): Promise<{ developer: DeveloperDoc; project: ProjectDocument }> {
     const projectObjectId =
@@ -112,7 +112,7 @@ export class DeveloperOwnershipService {
    * Verifies if the current user owns a reel resource by reel ID.
    */
   async verifyReelOwnership(
-    user: JwtPayload,
+    user: AuthJwtPayload,
     reelId: string | Types.ObjectId,
   ): Promise<{ developer: DeveloperDoc; reel: ReelDocument }> {
     const reelObjectId =
@@ -133,7 +133,7 @@ export class DeveloperOwnershipService {
    * Verifies if the current user owns an inventory resource by inventory ID.
    */
   async verifyInventoryOwnership(
-    user: JwtPayload,
+    user: AuthJwtPayload,
     inventoryId: string | Types.ObjectId,
   ): Promise<{ developer: DeveloperDoc; inventory: InventoryDocument }> {
     const invObjectId =

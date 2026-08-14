@@ -16,9 +16,9 @@ import { ReelsService } from './reels.service';
 import { CreateReelDto } from './dto/create-reel.dto';
 import { UpdateReelDto } from './dto/update-reel.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/roles/roles.guard';
-import { Role } from 'src/roles/roles.enum';
-import { Roles } from 'src/roles/roles.decorator';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Role } from 'src/auth/enum/roles.enum';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import {
   FileFieldsInterceptor,

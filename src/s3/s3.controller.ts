@@ -16,9 +16,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { S3Service } from './s3.service';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Role } from 'src/roles/roles.enum';
-import { RolesGuard } from 'src/roles/roles.guard';
-import { Roles } from 'src/roles/roles.decorator';
+import { Role } from 'src/auth/enum/roles.enum';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('upload')
 export class S3Controller {

@@ -47,6 +47,9 @@ export class User {
 
   @Prop({ required: false })
   passwordResetOTPExpires: Date;
+
+  @Prop({ required: false, default: null })
+  hashedRefreshToken?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

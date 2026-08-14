@@ -2,33 +2,24 @@ import {
   Controller,
   Post,
   Body,
-  Get,
   Req,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import type { Request } from 'express';
 import { AuthService } from './auth.service';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
-import { CurrentUser } from './decorators/current-user.decorator';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ResendVerificationDto } from './dto/resend-verification.dto';
 import { Throttle } from '@nestjs/throttler';
-
-interface AuthenticatedRequest extends Request {
-  user?: JwtPayload;
-}
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RefreshAuthGuard } from './guards/refresh-auth.guard';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
-@UseGuards(JwtAuthGuard) // Apply guard globally to all routes
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -36,15 +27,14 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  login(@Body() loginDto: LoginDto, @Req() req: AuthenticatedRequest) {
-    const deviceInfo = req.headers['user-agent'];
-    const ipAddress =
-      (req.headers['x-forwarded-for'] as string) ||
-      req.ip ||
-      req.socket.remoteAddress;
-    return this.authService.login(loginDto, deviceInfo, ipAddress);
+  async login(@Body() loginDto: LoginDto) {
+    const user = await this.authService.validateUser(
+      loginDto.email,
+      loginDto.password,
+    );
+    return this.authService.login(user.id, user.role);
   }
 
   @Public()
@@ -55,39 +45,20 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
-  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  refresh(@Body() body: RefreshTokenDto, @Req() req: AuthenticatedRequest) {
-    const deviceInfo = req.headers['user-agent'];
-    const ipAddress =
-      (req.headers['x-forwarded-for'] as string) ||
-      req.ip ||
-      req.socket.remoteAddress;
-    return this.authService.refreshTokens(
-      body.refreshToken,
-      deviceInfo,
-      ipAddress,
-    );
+  @UseGuards(RefreshAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  refresh(@Req() req) {
+    return this.authService.refreshToken(req.user.sub, req.user.role);
   }
 
-  @Public()
-  @Post('logout')
+  @Post('signout')
   @HttpCode(HttpStatus.OK)
-  logout(@Body() body: RefreshTokenDto) {
-    return this.authService.logout(body.refreshToken);
-  }
-
-  @Post('logout-all')
-  @HttpCode(HttpStatus.OK)
-  logoutAll(@CurrentUser('sub') userId: string) {
-    return this.authService.revokeAllUserTokens(userId);
-  }
-
-  @Get('sessions')
+  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  getActiveSessions(@CurrentUser('sub') userId: string) {
-    return this.authService.getActiveSessions(userId);
+  signout(@Req() req) {
+    return this.authService.signout(req.user.sub);
   }
 
   // ==================== EMAIL VERIFICATION ====================
@@ -137,24 +108,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
-    return this.authService.resetPassword(
-      resetPasswordDto.email,
-      resetPasswordDto.otp,
-      resetPasswordDto.newPassword,
-    );
+    return this.authService.resetPassword(resetPasswordDto);
   }
 
-  // ==================== ADMIN UTILITIES ====================
-
-  /**
-   * Cleanup unverified users with expired OTPs
-   * This endpoint can be called manually or via a cron job
-   */
-  @Public()
-  @Post('cleanup-unverified')
-  @Throttle({ default: { limit: 1, ttl: 3600000 } })
-  @HttpCode(HttpStatus.OK)
-  cleanupUnverifiedUsers() {
-    return this.authService.cleanupUnverifiedUsers();
-  }
 }

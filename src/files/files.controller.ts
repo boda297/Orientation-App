@@ -17,10 +17,10 @@ import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Roles } from 'src/roles/roles.decorator';
-import { Role } from 'src/roles/roles.enum';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from 'src/auth/enum/roles.enum';
 import { MongoIdDto } from 'src/common/mongoId.dto';
-import { RolesGuard } from 'src/roles/roles.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 import {
   PdfMagicByteValidationPipe,
   InventoryMagicByteValidationPipe,

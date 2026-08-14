@@ -13,11 +13,11 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
-import { Role } from 'src/roles/roles.enum';
-import { Roles } from 'src/roles/roles.decorator';
-import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { Role } from '../auth/enum/roles.enum';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/roles/roles.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Types } from 'mongoose';
 
 @Controller('users')
@@ -64,8 +64,8 @@ export class UsersController {
   // @description : Get current user's profile
   @Get('profile')
   @UseGuards(JwtAuthGuard)
-  getProfile(@CurrentUser('sub') userId: string) {
-    return this.usersService.findOne(userId as unknown as Types.ObjectId);
+  getProfile(@Req() req) {
+    return this.usersService.findOne(req.user.sub);
   }
 
   // @access : Accessible by Superadmin and Admin

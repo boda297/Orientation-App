@@ -1,16 +1,22 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { EmailService } from 'src/email/email.service';
 import { OtpService } from './services/otp.service';
-import { TokenService } from './services/token.service';
-import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import * as bcrypt from 'bcrypt';
+import { JwtService } from '@nestjs/jwt';
+import refreshJwtConfig from './config/refresh-jwt.config';
+import { ConfigType } from '@nestjs/config';
+import { Types } from 'mongoose';
+import { AuthJwtPayload } from './types/auth-jwtPayload';
+import * as argon2 from 'argon2';
 
 @Injectable()
 export class AuthService {
@@ -18,92 +24,102 @@ export class AuthService {
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
     private readonly otpService: OtpService,
-    private readonly tokenService: TokenService,
+    private jwtService: JwtService,
+    @Inject(refreshJwtConfig.KEY)
+    private refreshJwtConfiguration: ConfigType<typeof refreshJwtConfig>,
   ) {}
 
-  /**
-   * Login user and return access + refresh tokens
-   */
-  async login(loginDto: LoginDto, deviceInfo?: string, ipAddress?: string) {
-    const email = loginDto.email;
+  // Validate user credentials
+  async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
-    if (!user) {
+    if (!user) throw new UnauthorizedException('Invalid credentials');
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!isPasswordMatch)
       throw new UnauthorizedException('Invalid credentials');
-    }
 
-    if (!user.password) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      user.password,
-    );
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Check if email is verified
-    if (!user.isEmailVerified) {
-      throw new UnauthorizedException(
-        'Please verify your email before logging in',
-      );
-    }
-
-    const userPayload = {
-      sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
-    };
-
-    const accessToken = this.tokenService.generateAccessToken(userPayload);
-    const refreshToken = this.tokenService.generateRefreshToken(userPayload);
-
-    // Store refresh token in database
-    await this.tokenService.storeRefreshToken(
-      user._id.toString(),
-      refreshToken,
-      deviceInfo,
-      ipAddress,
-    );
-
-    // Exclude password and OTP fields from response
-    const {
-      password,
-      emailVerificationOTP,
-      emailVerificationOTPExpires,
-      passwordResetOTP,
-      passwordResetOTPExpires,
-      ...userWithoutSensitiveData
-    } = user.toObject();
-
-    return {
-      user: userWithoutSensitiveData,
-      accessToken,
-      refreshToken,
-    };
+    return { id: user._id, role: user.role };
   }
 
-  /**
-   * Register new user and send verification OTP
-   */
+  // Login user and return access + refresh tokens
+  async login(userId: Types.ObjectId, role?: string) {
+    const { accessToken, refreshToken } = await this.generateTokens(
+      userId,
+      role,
+    );
+    // hash refresh token
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    // store hashed refresh token in user document
+    await this.usersService.updateHashedRefreshToken(
+      userId,
+      hashedRefreshToken,
+    );
+    return { id: userId, accessToken, refreshToken };
+  }
+
+  // Generate access and refresh tokens
+  async generateTokens(userId: Types.ObjectId, role?: string) {
+    // 1. create payload with user id and role
+    const payload: AuthJwtPayload = { sub: userId, role: role };
+    // 2. generate access and refresh tokens
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload),
+      this.jwtService.signAsync(payload, this.refreshJwtConfiguration),
+    ]);
+
+    return { accessToken, refreshToken };
+  }
+
+  // Validate refresh token
+  async validateRefreshToken(userId: Types.ObjectId, refreshToken: string) {
+    // 1. Find user by id
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.hashedRefreshToken)
+      throw new UnauthorizedException('Invalid Refresh Token');
+    // 2. Verify refresh token
+    const isRefreshTokenMatch = await argon2.verify(
+      user.hashedRefreshToken,
+      refreshToken,
+    );
+
+    if (!isRefreshTokenMatch)
+      throw new UnauthorizedException('Invalid Refresh Token');
+    return { sub: user._id, role: user.role };
+  }
+
+  // refreshtoken
+  async refreshToken(userId: Types.ObjectId, role?: string) {
+    const { accessToken, refreshToken } = await this.generateTokens(
+      userId,
+      role,
+    );
+    // hash refresh token
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    // store hashed refresh token in user document
+    await this.usersService.updateHashedRefreshToken(
+      userId,
+      hashedRefreshToken,
+    );
+    return { id: userId, accessToken, refreshToken };
+  }
+
+  // Register new user and send verification OTP
   async register(registerDto: RegisterDto) {
     const email = registerDto.email;
     const userExists = await this.usersService.findByEmail(email);
 
-    // If user exists and email is already verified, throw error
+    // 1. If user exists and email is already verified, throw error
     if (userExists && userExists.isEmailVerified) {
       throw new ConflictException('Email already registered');
     }
 
-    // Generate OTP using OTP service
+    // 2. Generate OTP using OTP service
     const otp = this.otpService.generateOTP();
     const otpExpires = this.otpService.getOtpExpiryDate();
 
+    // 3. Hash password
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
-    // If user exists but email is not verified, update their info and resend OTP
+    // 4. If user exists but email is not verified, update their info and resend OTP
     if (userExists && !userExists.isEmailVerified) {
       // Update user with new registration data
       await this.usersService.update(userExists._id, {
@@ -112,13 +128,13 @@ export class AuthService {
         phoneNumber: registerDto.phoneNumber,
       });
 
-      // Update OTP
+      // 5. Update OTP
       await this.usersService.updateOTP(userExists._id.toString(), {
         emailVerificationOTP: otp,
         emailVerificationOTPExpires: otpExpires,
       });
 
-      // Send OTP email
+      // 6. Send OTP email
       await this.emailService.sendVerificationOTP(email, otp);
 
       return {
@@ -129,20 +145,20 @@ export class AuthService {
       };
     }
 
-    // Create new user
+    // 7. Create new user
     const newUser = await this.usersService.create({
       ...registerDto,
       email,
       password: hashedPassword,
     });
 
-    // Save OTP to user
+    // 8. Save OTP to user
     await this.usersService.updateOTP(newUser.user._id.toString(), {
       emailVerificationOTP: otp,
       emailVerificationOTPExpires: otpExpires,
     });
 
-    // Send OTP email
+    // 9. Send OTP email
     await this.emailService.sendVerificationOTP(email, otp);
 
     return {
@@ -153,9 +169,7 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verify email with OTP
-   */
+  // Verify email with OTP
   async verifyEmail(email: string, otp: string) {
     const user = await this.usersService.findByEmail(email);
 
@@ -190,9 +204,7 @@ export class AuthService {
     };
   }
 
-  /**
-   * Resend verification OTP
-   */
+  // Resend verification OTP
   async resendVerificationOTP(email: string) {
     const user = await this.usersService.findByEmail(email);
 
@@ -221,9 +233,7 @@ export class AuthService {
     };
   }
 
-  /**
-   * Forgot password - send reset OTP
-   */
+  // Forgot password - send reset OTP
   async forgotPassword(email: string) {
     const user = await this.usersService.findByEmail(email);
 
@@ -252,9 +262,7 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verify reset OTP (optional - verify before allowing password change)
-   */
+  // Verify reset OTP (optional - verify before allowing password change)
   async verifyResetOTP(email: string, otp: string) {
     const user = await this.usersService.findByEmail(email);
 
@@ -272,22 +280,37 @@ export class AuthService {
       throw new BadRequestException(validationResult.error);
     }
 
+    // Clear password reset OTP to prevent reuse
+    await this.usersService.updateOTP(user._id.toString(), {
+      passwordResetOTP: null,
+      passwordResetOTPExpires: null,
+    });
+
     return {
       success: true,
       message: 'OTP verified. You can now reset your password.',
     };
   }
 
-  /**
-   * Reset password with OTP
-   */
-  async resetPassword(email: string, otp: string, newPassword: string) {
-    const user = await this.usersService.findByEmail(email);
+  async signout(userId: Types.ObjectId) {
+    await this.usersService.updateHashedRefreshToken(userId, null);
+    return {
+      success: true,
+      message: 'User signed out successfully',
+    };
+  }
 
+  // Reset password with OTP
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const { email, otp, newPassword } = resetPasswordDto;
+
+    // 1. Find user by email
+    const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
+    // 2. Validate OTP
     const validationResult = this.otpService.validateOtp(
       otp,
       user.passwordResetOTP,
@@ -295,105 +318,23 @@ export class AuthService {
     );
 
     if (!validationResult.valid) {
-      throw new BadRequestException(validationResult.error);
+      throw new BadRequestException('Invalid or expired OTP!');
     }
 
-    // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password and clear OTP
+    // 3. Update user password and clear OTP fields to prevent reuse
     await this.usersService.updatePassword(user._id.toString(), hashedPassword);
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: null,
       passwordResetOTPExpires: null,
     });
 
-    // Revoke all refresh tokens for security
-    await this.revokeAllUserTokens(user._id.toString());
+    // 4. Invalidate active refresh tokens to force re-authentication
+    await this.usersService.updateHashedRefreshToken(user._id, null);
 
     return {
       success: true,
-      message: 'Password reset successfully',
-    };
-  }
-
-  /**
-   * Refresh tokens with rotation (single-use refresh tokens)
-   */
-  async refreshTokens(
-    refreshToken: string,
-    deviceInfo?: string,
-    ipAddress?: string,
-  ) {
-    // Verify and check reuse via TokenService
-    const { payload, storedToken } =
-      await this.tokenService.verifyRefreshToken(refreshToken);
-
-    // Delete the old refresh token (single-use)
-    await this.tokenService.deleteRefreshToken(storedToken._id.toString());
-
-    // Get the user
-    const user = await this.usersService.findById(payload.sub);
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    // Generate new tokens
-    const userPayload = {
-      sub: user._id.toString(), // Ensure consistency 'sub' vs 'id'
-      email: user.email,
-      role: user.role,
-    };
-
-    const newAccessToken = this.tokenService.generateAccessToken(userPayload);
-    const newRefreshToken = this.tokenService.generateRefreshToken(userPayload);
-
-    // Store the new refresh token
-    await this.tokenService.storeRefreshToken(
-      user._id.toString(),
-      newRefreshToken,
-      deviceInfo || storedToken.deviceInfo,
-      ipAddress || storedToken.ipAddress,
-    );
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    };
-  }
-
-  /**
-   * Logout - revoke the specific refresh token
-   */
-  async logout(refreshToken: string): Promise<{ message: string }> {
-    await this.tokenService.revokeRefreshToken(refreshToken);
-    return { message: 'Logged out successfully' };
-  }
-
-  /**
-   * Logout from all devices - revoke all refresh tokens for the user
-   */
-  async revokeAllUserTokens(userId: string): Promise<{ message: string }> {
-    await this.tokenService.revokeAllUserTokens(userId);
-    return { message: 'Logged out from all devices successfully' };
-  }
-
-  /**
-   * Get all active sessions for a user
-   */
-  async getActiveSessions(userId: string) {
-    return this.tokenService.getActiveSessions(userId);
-  }
-
-  /**
-   * Clean up unverified users with expired OTPs
-   */
-  async cleanupUnverifiedUsers() {
-    const result = await this.usersService.deleteUnverifiedExpiredUsers();
-    return {
-      success: true,
-      message: `Cleaned up ${result.deletedCount} unverified users with expired OTPs`,
-      deletedCount: result.deletedCount,
+      message: 'Password has been reset successfully',
     };
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DEFAULT_OTP_EXPIRY_MINUTES, DEFAULT_OTP_LENGTH } from '../constants';
+import { randomInt } from 'crypto';
 
 @Injectable()
 export class OtpService {
@@ -19,7 +20,7 @@ export class OtpService {
 
     let otp = '';
     for (let i = 0; i < otpLength; i++) {
-      otp += Math.floor(Math.random() * 10);
+      otp += randomInt(0, 10).toString();
     }
     return otp;
   }
@@ -69,17 +70,17 @@ export class OtpService {
       };
     }
 
-    if (providedOtp !== storedOtp) {
-      return {
-        valid: false,
-        error: 'Invalid OTP code.',
-      };
-    }
-
     if (this.isOtpExpired(expiryDate)) {
       return {
         valid: false,
         error: 'OTP has expired. Please request a new one.',
+      };
+    }
+
+    if (providedOtp !== storedOtp) {
+      return {
+        valid: false,
+        error: 'Invalid OTP code.',
       };
     }
 

@@ -9,7 +9,7 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { Developer, DeveloperDoc } from './entities/developer.entity';
 import { User, UserDocument } from 'src/users/entities/user.entity';
-import { Role } from 'src/roles/roles.enum';
+import { Role } from 'src/auth/enum/roles.enum';
 import { CreateDeveloperAccountDto } from './dto/create-developer-account.dto';
 
 @Injectable()

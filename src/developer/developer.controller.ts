@@ -13,9 +13,9 @@ import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { RolesGuard } from 'src/roles/roles.guard';
-import { Roles } from 'src/roles/roles.decorator';
-import { Role } from 'src/roles/roles.enum';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from 'src/auth/enum/roles.enum';
 import { UpdateDeveloperScriptDto } from './dto/update-developer-project.dto';
 import { JoinDeveloperDto } from './dto/join-developer.dto';
 import { CreateDeveloperAccountDto } from './dto/create-developer-account.dto';
@@ -126,12 +126,10 @@ export class DeveloperController {
   @UseGuards(JwtAuthGuard)
   joinDeveloper(
     @CurrentUser('sub') userId: string,
-    @CurrentUser('email') userEmail: string,
     @Body() joinDeveloperDto: JoinDeveloperDto,
   ) {
     return this.developerService.joinDeveloper(joinDeveloperDto, {
       userId,
-      userEmail,
     });
   }
 
