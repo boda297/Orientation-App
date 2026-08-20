@@ -252,6 +252,7 @@ export class AuthService {
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: otp,
       passwordResetOTPExpires: otpExpires,
+      isPasswordResetVerified: false,
     });
 
     await this.emailService.sendPasswordResetOTP(email, otp);
@@ -262,7 +263,7 @@ export class AuthService {
     };
   }
 
-  // Verify reset OTP (optional - verify before allowing password change)
+  // Verify reset OTP
   async verifyResetOTP(email: string, otp: string) {
     const user = await this.usersService.findByEmail(email);
 
@@ -280,15 +281,15 @@ export class AuthService {
       throw new BadRequestException(validationResult.error);
     }
 
-    // Clear password reset OTP to prevent reuse
+    // Mark password reset as verified and clear OTP code
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: null,
-      passwordResetOTPExpires: null,
+      isPasswordResetVerified: true,
     });
 
     return {
       success: true,
-      message: 'OTP verified. You can now reset your password.',
+      message: 'OTP verified successfully. You can now reset your password.',
     };
   }
 
@@ -300,9 +301,9 @@ export class AuthService {
     };
   }
 
-  // Reset password with OTP
+  // Reset password after OTP has been verified
   async resetPassword(resetPasswordDto: ResetPasswordDto) {
-    const { email, otp, newPassword } = resetPasswordDto;
+    const { email, newPassword } = resetPasswordDto;
 
     // 1. Find user by email
     const user = await this.usersService.findByEmail(email);
@@ -310,26 +311,37 @@ export class AuthService {
       throw new BadRequestException('User not found');
     }
 
-    // 2. Validate OTP
-    const validationResult = this.otpService.validateOtp(
-      otp,
-      user.passwordResetOTP,
-      user.passwordResetOTPExpires,
-    );
+    // 2. Check if password reset OTP was verified
+    if (!user.isPasswordResetVerified) {
+      throw new BadRequestException(
+        'OTP must be verified before resetting password',
+      );
+    }
 
-    if (!validationResult.valid) {
-      throw new BadRequestException('Invalid or expired OTP!');
+    // 3. Check if expiry has passed
+    if (this.otpService.isOtpExpired(user.passwordResetOTPExpires)) {
+      await this.usersService.updateOTP(user._id.toString(), {
+        isPasswordResetVerified: false,
+        passwordResetOTPExpires: null,
+      });
+      throw new BadRequestException(
+        'Password reset session has expired. Please request a new OTP.',
+      );
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    // 3. Update user password and clear OTP fields to prevent reuse
-    await this.usersService.updatePassword(user._id.toString(), hashedPassword);
+    // 4. Update user password and clear reset state
+    await this.usersService.updatePassword(
+      user._id.toString(),
+      hashedPassword,
+    );
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: null,
       passwordResetOTPExpires: null,
+      isPasswordResetVerified: false,
     });
 
-    // 4. Invalidate active refresh tokens to force re-authentication
+    // 5. Invalidate active refresh tokens to force re-authentication
     await this.usersService.updateHashedRefreshToken(user._id, null);
 
     return {

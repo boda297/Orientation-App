@@ -37,7 +37,7 @@ export class EpisodeController {
       ],
       {
         limits: {
-          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+          fileSize: 1 * 1024 * 1024 * 1024, // 1GB max
         },
       },
     ),
@@ -69,6 +69,7 @@ export class EpisodeController {
   }
 
   @Get(':id')
+  @UseGuards(JwtAuthGuard)
   async findOne(@Param() params: MongoIdDto) {
     return this.episodeService.findOne(params.id);
   }
@@ -84,7 +85,7 @@ export class EpisodeController {
       ],
       {
         limits: {
-          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+          fileSize: 1 * 1024 * 1024 * 1024, // 1GB max
         },
       },
     ),

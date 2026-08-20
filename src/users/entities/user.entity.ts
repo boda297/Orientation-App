@@ -48,6 +48,9 @@ export class User {
   @Prop({ required: false })
   passwordResetOTPExpires: Date;
 
+  @Prop({ default: false })
+  isPasswordResetVerified: boolean;
+
   @Prop({ required: false, default: null })
   hashedRefreshToken?: string;
 }

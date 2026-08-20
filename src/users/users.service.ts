@@ -140,6 +140,7 @@ export class UsersService {
       passwordResetOTP?: string | null;
       passwordResetOTPExpires?: Date | null;
       isEmailVerified?: boolean;
+      isPasswordResetVerified?: boolean;
     },
   ) {
     const user = await this.userModel.findByIdAndUpdate(id, otpData, {

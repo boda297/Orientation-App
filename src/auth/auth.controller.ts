@@ -3,10 +3,12 @@ import {
   Post,
   Body,
   Req,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
 import { LoginDto } from './dto/login.dto';
@@ -19,6 +21,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshAuthGuard } from './guards/refresh-auth.guard';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
+const cookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+};
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -29,12 +37,26 @@ export class AuthController {
   @Post('login')
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto) {
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     const user = await this.authService.validateUser(
       loginDto.email,
       loginDto.password,
     );
-    return this.authService.login(user.id, user.role);
+    const result = await this.authService.login(user.id, user.role);
+
+    res.cookie('accessToken', result.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', result.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return result;
   }
 
   @Public()
@@ -45,19 +67,42 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
+  @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @UseGuards(RefreshAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  refresh(@Req() req) {
-    return this.authService.refreshToken(req.user.sub, req.user.role);
+  async refresh(
+    @Req() req,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.refreshToken(
+      req.user.sub,
+      req.user.role,
+    );
+
+    res.cookie('accessToken', result.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', result.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return result;
   }
 
   @Post('signout')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  signout(@Req() req) {
+  async signout(
+    @Req() req,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    res.clearCookie('accessToken', cookieOptions);
+    res.clearCookie('refreshToken', cookieOptions);
     return this.authService.signout(req.user.sub);
   }
 

@@ -3,10 +3,17 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import * as express from 'express';
+import cookieParser from 'cookie-parser';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Set global prefix for all endpoints
+  app.setGlobalPrefix('api/v1');
+
+  // Parse cookies
+  app.use(cookieParser());
 
   // Trust proxy for accurate IP extraction and rate limiting behind reverse proxies
   app.set('trust proxy', 1);

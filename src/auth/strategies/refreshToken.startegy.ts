@@ -6,7 +6,6 @@ import refreshJwtConfig from '../config/refresh-jwt.config';
 import { AuthJwtPayload } from '../types/auth-jwtPayload';
 import { Request } from 'express';
 import { AuthService } from '../auth.service';
-import { Types } from 'mongoose';
 
 @Injectable()
 export class RefreshJwtStrategy extends PassportStrategy(
@@ -24,7 +23,10 @@ export class RefreshJwtStrategy extends PassportStrategy(
     }
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        (req: Request) => req?.cookies?.refreshToken || null,
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+      ]),
       secretOrKey: secret,
       ignoreExpiration: false,
       passReqToCallback: true,
@@ -35,10 +37,9 @@ export class RefreshJwtStrategy extends PassportStrategy(
     req: Request,
     payload: AuthJwtPayload,
   ): Promise<AuthJwtPayload> {
-    const refreshToken = req
-      .get('Authorization')
-      ?.replace('Bearer ', '')
-      .trim();
+    const refreshToken =
+      req?.cookies?.refreshToken ||
+      req.get('Authorization')?.replace('Bearer ', '').trim();
     const userId = payload.sub;
     return this.authService.validateRefreshToken(userId, refreshToken as string);
   }

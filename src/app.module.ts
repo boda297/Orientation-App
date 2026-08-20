@@ -17,6 +17,7 @@ import { WatchHistoryModule } from './watch-history/watch-history.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({
   imports: [
@@ -53,19 +54,9 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     FilesModule,
     NewsModule,
     WatchHistoryModule,
+    SubscriptionModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    // Global exception filter — DI-managed so Logger and other providers are injectable
-    {
-      provide: APP_FILTER,
-      useClass: GlobalExceptionFilter,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: CustomThrottlerGuard,
-    },
-  ],
+  providers: [AppService],
 })
 export class AppModule {}
