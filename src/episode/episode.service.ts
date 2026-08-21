@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Logger,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { CreateEpisodeDto } from './dto/create-episode.dto';
 import { UpdateEpisodeDto } from './dto/update-episode.dto';
 import { Episode, EpisodeDocument } from './entities/episode.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Project, ProjectDocument } from 'src/projects/entities/project.entity';
+import { ProjectsService } from 'src/projects/projects.service';
 import { S3Service } from 'src/s3/s3.service';
 
 @Injectable()
@@ -13,17 +19,25 @@ export class EpisodeService {
 
   constructor(
     @InjectModel(Episode.name) private episodeModel: Model<EpisodeDocument>,
-    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
-    private s3Service: S3Service,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService,
+    private readonly s3Service: S3Service,
   ) {}
 
+  /*
+  =========================================  
+        Core CRUD & Route Functions
+  =========================================  
+  */
+
+  // Upload a new episode
   async uploadEpisode(
     createEpisodeDto: CreateEpisodeDto,
     episodeFile: Express.Multer.File,
     thumbnailFile?: Express.Multer.File,
     uploadedBy?: string,
   ) {
-    const project = await this.projectModel.findById(
+    const project = await this.projectsService.findProjectById(
       createEpisodeDto.projectId,
     );
     if (!project) {
@@ -60,10 +74,11 @@ export class EpisodeService {
     const episode = new this.episodeModel(episodeData);
     const savedEpisode = await episode.save();
 
-    // Push episode to project's episodes array
-    await this.projectModel.findByIdAndUpdate(createEpisodeDto.projectId, {
-      $push: { episodes: savedEpisode._id },
-    });
+    // Push episode to project's episodes array via ProjectsService
+    await this.projectsService.addEpisodeToProject(
+      createEpisodeDto.projectId,
+      savedEpisode._id,
+    );
 
     return {
       message: 'Episode uploaded successfully',
@@ -71,6 +86,7 @@ export class EpisodeService {
     };
   }
 
+  // Find all episodes
   async findAll() {
     return this.episodeModel
       .find()
@@ -78,6 +94,7 @@ export class EpisodeService {
       .sort({ createdAt: -1 });
   }
 
+  // Find one episode by ID
   async findOne(id: Types.ObjectId) {
     const episode = await this.episodeModel
       .findById(id)
@@ -90,6 +107,7 @@ export class EpisodeService {
     return episode;
   }
 
+  // Update episode details and replace files on S3 if provided
   async update(
     id: Types.ObjectId,
     updateEpisodeDto: UpdateEpisodeDto,
@@ -132,7 +150,6 @@ export class EpisodeService {
 
       // Delete old thumbnail from S3 if it exists
       if (episode.thumbnail) {
-        // Extract S3 key from thumbnail URL
         const oldThumbnailKey = episode.thumbnail
           .split('/')
           .slice(-2)
@@ -169,6 +186,7 @@ export class EpisodeService {
     };
   }
 
+  // Remove single episode
   async remove(id: Types.ObjectId) {
     const episode = await this.episodeModel.findById(id);
 
@@ -181,10 +199,11 @@ export class EpisodeService {
       await this.s3Service.deleteFile(episode.s3Key);
     }
 
-    // Remove episode from project's episodes array
-    await this.projectModel.findByIdAndUpdate(episode.projectId, {
-      $pull: { episodes: id },
-    });
+    // Remove episode from project's episodes array via ProjectsService
+    await this.projectsService.removeEpisodeFromProject(
+      episode.projectId,
+      id,
+    );
 
     await this.episodeModel.findByIdAndDelete(id);
 
@@ -192,5 +211,34 @@ export class EpisodeService {
     return {
       message: 'Episode deleted successfully',
     };
+  }
+
+  /*
+  =========================================  
+              Helper Functions
+  =========================================  
+  */
+
+  // Cascade delete multiple episodes by IDs (used by ProjectsService and DeveloperService)
+  async deleteManyByIds(episodeIds: Types.ObjectId[]) {
+    if (!episodeIds || episodeIds.length === 0) return;
+    const episodes = await this.episodeModel.find({
+      _id: { $in: episodeIds },
+    });
+    for (const episode of episodes) {
+      if (episode.s3Key) {
+        try {
+          await this.s3Service.deleteFile(episode.s3Key);
+        } catch (error) {
+          this.logger.error(
+            `Failed to delete episode S3 file: ${episode.s3Key}`,
+            error,
+          );
+        }
+      }
+    }
+    await this.episodeModel.deleteMany({
+      _id: { $in: episodeIds },
+    });
   }
 }

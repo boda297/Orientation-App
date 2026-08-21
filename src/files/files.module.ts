@@ -39,6 +39,7 @@ import {
     InventoryMagicByteValidationPipe,
   ],
   exports: [
+    FilesService,
     FILE_SIGNATURE_INSPECTOR,
     PdfMagicByteValidationPipe,
     InventoryMagicByteValidationPipe,

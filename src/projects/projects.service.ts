@@ -1,41 +1,44 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+} from '@nestjs/common';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { CreateUpcommingProjectDto } from './dto/create-upcomming-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { Model, Types } from 'mongoose';
 import { Project, ProjectDocument } from './entities/project.entity';
-import { User, UserDocument } from 'src/users/entities/user.entity';
 import { InjectModel } from '@nestjs/mongoose';
 import { DeveloperService } from 'src/developer/developer.service';
-import {
-  Developer,
-  DeveloperDoc,
-} from 'src/developer/entities/developer.entity';
 import { S3Service } from 'src/s3/s3.service';
-import { Episode, EpisodeDocument } from 'src/episode/entities/episode.entity';
-import { Reel, ReelDocument } from 'src/reels/entities/reel.entity';
-import {
-  Inventory,
-  InventoryDocument,
-} from 'src/files/entities/inventory.entity';
-import { File, FileDocument } from 'src/files/entities/file.entity';
 import { QueryProjectDto } from './dto/query-project.dto';
+import { UsersService } from 'src/users/users.service';
+import { EpisodeService } from 'src/episode/episode.service';
+import { ReelsService } from 'src/reels/reels.service';
+import { FilesService } from 'src/files/files.service';
 
 @Injectable()
 export class ProjectsService {
   constructor(
     @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-    @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
-    @InjectModel(Episode.name) private episodeModel: Model<EpisodeDocument>,
-    @InjectModel(Reel.name) private reelModel: Model<ReelDocument>,
-    @InjectModel(Inventory.name)
-    private inventoryModel: Model<InventoryDocument>,
-    @InjectModel(File.name) private fileModel: Model<FileDocument>,
-    private developerService: DeveloperService,
-    private s3Service: S3Service,
+    private readonly usersService: UsersService,
+    private readonly developerService: DeveloperService,
+    @Inject(forwardRef(() => EpisodeService))
+    private readonly episodeService: EpisodeService,
+    @Inject(forwardRef(() => ReelsService))
+    private readonly reelsService: ReelsService,
+    private readonly filesService: FilesService,
+    private readonly s3Service: S3Service,
   ) {}
 
+  /*
+  =========================================  
+        Core CRUD & Route Functions
+  =========================================  
+  */
+
+  // Create Upcoming Project
   async createUpcommingProject(
     createUpcommingProjectDto: CreateUpcommingProjectDto,
     projectThumbnail?: Express.Multer.File,
@@ -86,15 +89,14 @@ export class ProjectsService {
       const savedProject = await project.save();
 
       // Push project to developer's projects array
-      await this.developerModel.findByIdAndUpdate(
+      await this.developerService.addProjectToDeveloper(
         createUpcommingProjectDto.developer,
-        { $push: { projects: savedProject._id } },
-        { new: true },
+        savedProject._id,
       );
 
       return {
         message: 'Upcoming project created successfully',
-        project: savedProject,
+        project: savedProject._id,
       };
     } catch (error) {
       // Handle duplicate key error (unique constraint violation)
@@ -105,6 +107,7 @@ export class ProjectsService {
     }
   }
 
+  // Create Project
   async create(
     createProjectDto: CreateProjectDto,
     logo?: Express.Multer.File,
@@ -174,15 +177,14 @@ export class ProjectsService {
       const savedProject = await project.save();
 
       // Push project to developer's projects array
-      await this.developerModel.findByIdAndUpdate(
+      await this.developerService.addProjectToDeveloper(
         createProjectDto.developer,
-        { $push: { projects: savedProject._id } },
-        { new: true },
+        savedProject._id,
       );
 
       return {
         message: 'Project created successfully',
-        project: savedProject,
+        project: savedProject._id,
       };
     } catch (error) {
       // Handle duplicate key error (unique constraint violation)
@@ -193,12 +195,14 @@ export class ProjectsService {
     }
   }
 
+  // Get All Projects
   findAll(query: QueryProjectDto) {
-    const { developerId, location, status, title, slug, limit, page, sortBy } =
-      query;
+    const { developerId, location, status, title, limit, page, sortBy } = query;
     const mongoQuery = this.projectModel
       .find({ deletedAt: null })
-      .select('id title location projectThumbnailUrl reels');
+      .select(
+        '_id slug title location developer status createdAt published projectThumbnailUrl',
+      );
     if (developerId) {
       mongoQuery.where('developer').equals(developerId);
     }
@@ -210,9 +214,6 @@ export class ProjectsService {
     }
     if (title) {
       mongoQuery.where('title').equals(title);
-    }
-    if (slug) {
-      mongoQuery.where('slug').equals(slug);
     }
     if (limit) {
       mongoQuery.limit(limit);
@@ -229,93 +230,7 @@ export class ProjectsService {
     return mongoQuery.exec();
   }
 
-  findFeatured(limit: number = 10) {
-    return this.projectModel
-      .find({ deletedAt: null, featured: true })
-      .limit(limit)
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  findLatest(limit: number = 10) {
-    return this.projectModel
-      .find({ deletedAt: null })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  findProjectByLocation(location: string) {
-    return this.projectModel
-      .find({ deletedAt: null, location: location })
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  findProjectByStatus(status: string) {
-    return this.projectModel
-      .find({ deletedAt: null, status: status })
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  findProjectByTitle(title: string) {
-    return this.projectModel
-      .find({ deletedAt: null, title: title })
-      .collation({ locale: 'en', strength: 2 })
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  /**
-   * Performs high-speed MongoDB $text index search across title, location, and script
-   */
-  searchProjects(query: string) {
-    return this.projectModel
-      .find({
-        $text: { $search: query },
-        deletedAt: null,
-      })
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  async findSavedProjects(userId: Types.ObjectId) {
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    return this.projectModel
-      .find({ deletedAt: null, _id: { $in: user.savedProjects } })
-      .select('id title location projectThumbnailUrl')
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
-  async findByDeveloper(developer: string) {
-    return this.projectModel
-      .find({ deletedAt: null, developer: developer })
-      .exec()
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
-  }
-
+  // Find One Project
   async findOne(id: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {
@@ -335,117 +250,151 @@ export class ProjectsService {
     return project;
   }
 
-  async incrementViewCount(id: Types.ObjectId) {
-    const updatedProject = await this.projectModel.findByIdAndUpdate(
-      id,
-      { $inc: { viewCount: 1 } },
-      { new: true },
-    );
-    if (!updatedProject) {
-      throw new BadRequestException('Project not found');
-    }
-    await this.calculateTrendingScore(id);
-    return updatedProject;
+  // Find Featured Projects
+  async findFeatured(limit: number = 10) {
+    const projects = await this.projectModel
+      .find({ deletedAt: null, featured: true })
+      .select('_id title location status developer slug heroVideoUrl logoUrl')
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+
+    return projects.map((project) => ({
+      _id: project._id,
+      title: project.title,
+      location: project.location,
+      ad_url: project.heroVideoUrl,
+      adUrl: project.heroVideoUrl,
+      heroVideoUrl: project.heroVideoUrl,
+    }));
   }
 
-  async calculateTrendingScore(id: Types.ObjectId) {
-    const project = await this.projectModel.findById(id);
-    if (!project) {
-      throw new BadRequestException('Project not found');
-    }
-    const views = project.viewCount || 0;
-    const saves = project.saveCount || 0;
-    const createdAt = (project as any).createdAt
-      ? new Date((project as any).createdAt)
-      : new Date(project._id.getTimestamp());
-    const now = new Date();
-    const hoursSinceCreation =
-      (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
-    const baseScore = views * 1 + saves * 5;
-    const timeDecay = Math.pow(1 + hoursSinceCreation / 24, 1.5);
-    const trendingScore = baseScore / timeDecay;
-    await this.projectModel.findByIdAndUpdate(id, {
-      trendingScore: Math.round(trendingScore * 100) / 100,
-    });
-    return trendingScore;
+  // Find Latest Projects except upcoming projects
+  findLatest(limit: number = 10) {
+    return this.projectModel
+      .find({ deletedAt: null, status: { $ne: 'PLANNING' } })
+      .select(
+        '_id title slug status location developer published projectThumbnailUrl',
+      )
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
-  async recalculateAllTrendingScores() {
-    const projects = await this.projectModel.find({ deletedAt: null });
-    const updates = projects.map((project) =>
-      this.calculateTrendingScore(project._id),
-    );
-    await Promise.all(updates);
-    return {
-      message: `Updated trending scores for ${projects.length} projects`,
-    };
+  // Find Upcoming Projects
+  findUpcoming(limit: number = 10) {
+    return this.projectModel
+      .find({ deletedAt: null, status: 'PLANNING' })
+      .select(
+        '_id title slug status location developer published projectThumbnailUrl',
+      )
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
+  // Find Trending Projects
   async findTrending(limit: number = 10) {
     const projects = await this.projectModel
       .find({ deletedAt: null })
-      .populate('developer')
+      .select(
+        '_id slug title location status developer published projectThumbnailUrl trendingScore saveCount viewCount createdAt',
+      )
       .sort({ trendingScore: -1 })
       .limit(limit)
-      .exec();
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
     return projects.map((project, index) => ({
       rank: index + 1,
       ...project.toObject(),
     }));
   }
 
-  async saveProject(id: Types.ObjectId, userId: Types.ObjectId) {
-    const project = await this.projectModel.findById(id);
-    if (!project) {
-      throw new BadRequestException('Project not found');
+  // Find Projects by Location
+  findProjectByLocation(location: string, limit: number = 10) {
+    if (!location) {
+      throw new BadRequestException('Location query parameter is required');
     }
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    if (user.savedProjects.includes(id)) {
-      return { message: 'Project already saved' };
-    }
-    await this.projectModel.findByIdAndUpdate(
-      id,
-      { $inc: { saveCount: 1 } },
-      { new: true },
-    );
-    await this.userModel.findByIdAndUpdate(
-      userId,
-      { $addToSet: { savedProjects: id } },
-      { new: true },
-    );
-    await this.calculateTrendingScore(id);
-    return { message: 'Project saved successfully' };
+    return this.projectModel
+      .find({
+        deletedAt: null,
+        location: { $regex: new RegExp(location.trim(), 'i') },
+      })
+      .select(
+        '_id slug title status location developer published projectThumbnailUrl',
+      )
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
-  async unsaveProject(id: Types.ObjectId, userId: Types.ObjectId) {
-    const project = await this.projectModel.findById(id);
-    if (!project) {
-      throw new BadRequestException('Project not found');
-    }
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new BadRequestException('User not found');
-    }
-    if (!user.savedProjects.includes(id)) {
-      throw new BadRequestException('Project not saved');
-    }
-    await this.projectModel.findByIdAndUpdate(
-      id,
-      { $inc: { saveCount: -1 } },
-      { new: true },
-    );
-    await this.userModel.findByIdAndUpdate(
-      userId,
-      { $pull: { savedProjects: id } },
-      { new: true },
-    );
-    await this.calculateTrendingScore(id);
-    return { message: 'Project unsaved successfully' };
+  // Find Project by Status
+  findProjectByStatus(status: string) {
+    return this.projectModel
+      .find({ deletedAt: null, status: status })
+      .select('_id slug title location developer published projectThumbnailUrl')
+      .sort({ createdAt: -1 })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
   }
 
+  // Find Project by Title
+  findProjectByTitle(title: string) {
+    return this.projectModel
+      .find({ deletedAt: null, title: title })
+      .select(
+        '_id slug title location developer status createdAt published projectThumbnailUrl',
+      )
+      .collation({ locale: 'en', strength: 2 })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  // Find Saved Projects for users
+  async findSavedProjects(userId: Types.ObjectId) {
+    const savedProjectIds = await this.usersService.getSavedProjectIds(userId);
+    return this.projectModel
+      .find({ deletedAt: null, _id: { $in: savedProjectIds } })
+      .select(
+        '_id slug title location developer status createdAt published projectThumbnailUrl',
+      )
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  // Find Projects by Developer
+  async findByDeveloper(developer: string) {
+    return this.projectModel
+      .find({ deletedAt: null, developer: developer })
+      .select(
+        '_id slug title location developer status createdAt published projectThumbnailUrl',
+      )
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  // Update Project
   async update(
     id: Types.ObjectId,
     updateProjectDto: UpdateProjectDto,
@@ -534,6 +483,9 @@ export class ProjectsService {
         new: true,
         runValidators: true,
       })
+      .select(
+        '-deletedAt -__v -trendingScore -saveCount -viewCount -publishedAt -deletedAt',
+      )
       .catch((error) => {
         if (error.code === 11000) {
           throw new BadRequestException(
@@ -553,119 +505,42 @@ export class ProjectsService {
     };
   }
 
-  private extractS3KeyFromUrl(url: string): string {
-    const urlParts = url.split('/');
-    return urlParts.slice(-2).join('/');
-  }
-
-  async remove(id: Types.ObjectId) {
+  // Save Project for users
+  async saveProject(id: Types.ObjectId, userId: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
     }
-
-    // Delete all episodes and their S3 files
-    if (project.episodes && project.episodes.length > 0) {
-      const episodes = await this.episodeModel.find({
-        _id: { $in: project.episodes },
-      });
-      for (const episode of episodes) {
-        if (episode.s3Key) {
-          try {
-            await this.s3Service.deleteFile(episode.s3Key);
-          } catch (error) {
-            // Log error but continue deletion
-            console.error(
-              `Failed to delete episode S3 file: ${episode.s3Key}`,
-              error,
-            );
-          }
-        }
-      }
-      await this.episodeModel.deleteMany({
-        _id: { $in: project.episodes },
-      });
+    const result = await this.usersService.addSavedProject(userId, id);
+    if (result.alreadySaved) {
+      return { message: 'Project already saved' };
     }
-
-    // Delete all reels and their S3 files
-    if (project.reels && project.reels.length > 0) {
-      const reels = await this.reelModel.find({
-        _id: { $in: project.reels },
-      });
-      for (const reel of reels) {
-        if (reel.s3Key) {
-          try {
-            await this.s3Service.deleteFile(reel.s3Key);
-          } catch (error) {
-            console.error(
-              `Failed to delete reel S3 file: ${reel.s3Key}`,
-              error,
-            );
-          }
-        }
-      }
-      await this.reelModel.deleteMany({
-        _id: { $in: project.reels },
-      });
-    }
-
-    // Delete inventory and its S3 file
-    if (project.inventory) {
-      const inventoryIds = Array.isArray(project.inventory)
-        ? project.inventory
-        : [project.inventory];
-      const inventories = await this.inventoryModel.find({
-        _id: { $in: inventoryIds },
-      });
-      for (const inventory of inventories) {
-        if (inventory.s3Key) {
-          try {
-            await this.s3Service.deleteFile(inventory.s3Key);
-          } catch (error) {
-            console.error(
-              `Failed to delete inventory S3 file: ${inventory.s3Key}`,
-              error,
-            );
-          }
-        }
-      }
-      await this.inventoryModel.deleteMany({
-        _id: { $in: inventoryIds },
-      });
-    }
-
-    // Delete all PDFs and their S3 files
-    if (project.pdf && project.pdf.length > 0) {
-      const pdfs = await this.fileModel.find({
-        _id: { $in: project.pdf },
-      });
-      for (const pdf of pdfs) {
-        if (pdf.s3Key) {
-          try {
-            await this.s3Service.deleteFile(pdf.s3Key);
-          } catch (error) {
-            console.error(`Failed to delete PDF S3 file: ${pdf.s3Key}`, error);
-          }
-        }
-      }
-      await this.fileModel.deleteMany({
-        _id: { $in: project.pdf },
-      });
-    }
-
-    // Soft delete the project
-    const deletedProject = await this.projectModel.findByIdAndUpdate(
+    await this.projectModel.findByIdAndUpdate(
       id,
-      { deletedAt: new Date() },
+      { $inc: { saveCount: 1 } },
       { new: true },
     );
-
-    return {
-      message: 'Project and all associated data deleted successfully',
-      project: deletedProject,
-    };
+    await this.calculateTrendingScore(id);
+    return { message: 'Project saved successfully' };
   }
 
+  // Unsave Project for users
+  async unsaveProject(id: Types.ObjectId, userId: Types.ObjectId) {
+    const project = await this.projectModel.findById(id);
+    if (!project) {
+      throw new BadRequestException('Project not found');
+    }
+    await this.usersService.removeSavedProject(userId, id);
+    await this.projectModel.findByIdAndUpdate(
+      id,
+      { $inc: { saveCount: -1 } },
+      { new: true },
+    );
+    await this.calculateTrendingScore(id);
+    return { message: 'Project unsaved successfully' };
+  }
+
+  // Publish Project
   async publish(id: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {
@@ -685,6 +560,7 @@ export class ProjectsService {
     };
   }
 
+  // Unpublish Project
   async unpublish(id: Types.ObjectId) {
     const project = await this.projectModel.findById(id);
     if (!project) {
@@ -702,5 +578,182 @@ export class ProjectsService {
       message: 'Project unpublished successfully',
       project: unpublishedProject,
     };
+  }
+
+  // --- Delete Operations ---
+
+  // Soft Delete Project
+  async remove(id: Types.ObjectId) {
+    const project = await this.projectModel.findById(id);
+    if (!project) {
+      throw new BadRequestException('Project not found');
+    }
+
+    // Delete all episodes and their S3 files via EpisodeService
+    if (project.episodes && project.episodes.length > 0) {
+      await this.episodeService.deleteManyByIds(project.episodes);
+    }
+
+    // Delete all reels and their S3 files via ReelsService
+    if (project.reels && project.reels.length > 0) {
+      await this.reelsService.deleteManyByIds(project.reels);
+    }
+
+    // Delete inventory and its S3 file via FilesService
+    if (project.inventory) {
+      const inventoryIds = Array.isArray(project.inventory)
+        ? project.inventory
+        : [project.inventory];
+      await this.filesService.deleteInventoriesByIds(inventoryIds);
+    }
+
+    // Delete all PDFs and their S3 files via FilesService
+    if (project.pdf && project.pdf.length > 0) {
+      await this.filesService.deletePdfsByIds(project.pdf);
+    }
+
+    // Remove project from developer's projects list
+    if (project.developer) {
+      await this.developerService.removeProjectFromDeveloper(
+        project.developer,
+        project._id,
+      );
+    }
+
+    // Soft delete the project
+    const deletedProject = await this.projectModel.findByIdAndUpdate(
+      id,
+      { deletedAt: new Date() },
+      { new: true },
+    );
+
+    return {
+      message: 'Project and all associated data deleted successfully',
+      project: deletedProject,
+    };
+  }
+
+  /*
+  =========================================  
+              Helper Functions
+  =========================================  
+  */
+
+  // Search Projects for mongodb text index
+  searchProjects(query: string) {
+    return this.projectModel
+      .find({
+        $text: { $search: query },
+        deletedAt: null,
+      })
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
+  // Increment View Count
+  async incrementViewCount(id: Types.ObjectId) {
+    const updatedProject = await this.projectModel.findByIdAndUpdate(
+      id,
+      { $inc: { viewCount: 1 } },
+      { new: true },
+    );
+    if (!updatedProject) {
+      throw new BadRequestException('Project not found');
+    }
+    await this.calculateTrendingScore(id);
+    return updatedProject;
+  }
+
+  // Calculate Trending Score for projects
+  async calculateTrendingScore(id: Types.ObjectId) {
+    const project = await this.projectModel.findById(id);
+    if (!project) {
+      throw new BadRequestException('Project not found');
+    }
+    const views = project.viewCount || 0;
+    const saves = project.saveCount || 0;
+    const createdAt = (project as any).createdAt
+      ? new Date((project as any).createdAt)
+      : new Date(project._id.getTimestamp());
+    const now = new Date();
+    const hoursSinceCreation =
+      (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+    const baseScore = views * 1 + saves * 5;
+    const timeDecay = Math.pow(1 + hoursSinceCreation / 24, 1.5);
+    const trendingScore = baseScore / timeDecay;
+    await this.projectModel.findByIdAndUpdate(id, {
+      trendingScore: Math.round(trendingScore * 100) / 100,
+    });
+    return trendingScore;
+  }
+
+  // Recalculate Trending Scores
+  async recalculateAllTrendingScores() {
+    const projects = await this.projectModel.find({ deletedAt: null });
+    const updates = projects.map((project) =>
+      this.calculateTrendingScore(project._id),
+    );
+    await Promise.all(updates);
+    return {
+      message: `Updated trending scores for ${projects.length} projects`,
+    };
+  }
+
+  // Find Project by ID (Internal helper for other services)
+  async findProjectById(id: Types.ObjectId) {
+    return this.projectModel.findOne({ _id: id, deletedAt: null });
+  }
+
+  // Add Episode to Project
+  async addEpisodeToProject(
+    projectId: Types.ObjectId,
+    episodeId: Types.ObjectId,
+  ) {
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { $addToSet: { episodes: episodeId } },
+      { new: true },
+    );
+  }
+
+  // Remove Episode from Project
+  async removeEpisodeFromProject(
+    projectId: Types.ObjectId,
+    episodeId: Types.ObjectId,
+  ) {
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { $pull: { episodes: episodeId } },
+      { new: true },
+    );
+  }
+
+  // Add Reel to Project
+  async addReelToProject(projectId: Types.ObjectId, reelId: Types.ObjectId) {
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { $addToSet: { reels: reelId } },
+      { new: true },
+    );
+  }
+
+  // Remove Reel from Project
+  async removeReelFromProject(
+    projectId: Types.ObjectId,
+    reelId: Types.ObjectId,
+  ) {
+    return this.projectModel.findByIdAndUpdate(
+      projectId,
+      { $pull: { reels: reelId } },
+      { new: true },
+    );
+  }
+
+  // Extract S3 Key from URL
+  private extractS3KeyFromUrl(url: string): string {
+    const urlParts = url.split('/');
+    return urlParts.slice(-2).join('/');
   }
 }

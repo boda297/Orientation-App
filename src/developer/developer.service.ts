@@ -97,6 +97,30 @@ export class DeveloperService {
     return developer;
   }
 
+  // add project to developer's projects array
+  async addProjectToDeveloper(
+    developerId: Types.ObjectId,
+    projectId: Types.ObjectId,
+  ) {
+    return this.developerModel.findByIdAndUpdate(
+      developerId,
+      { $addToSet: { projects: projectId } },
+      { new: true },
+    );
+  }
+
+  // remove project from developer's projects array
+  async removeProjectFromDeveloper(
+    developerId: Types.ObjectId,
+    projectId: Types.ObjectId,
+  ) {
+    return this.developerModel.findByIdAndUpdate(
+      developerId,
+      { $pull: { projects: projectId } },
+      { new: true },
+    );
+  }
+
   // find projects by developer id
   async findProjectsByDeveloperId(developerId: Types.ObjectId) {
     return this.projectModel

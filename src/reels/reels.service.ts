@@ -1,38 +1,52 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
 import { CreateReelDto } from './dto/create-reel.dto';
 import { UpdateReelDto } from './dto/update-reel.dto';
 import { InjectModel } from '@nestjs/mongoose';
 import { Reel, ReelDocument } from './entities/reel.entity';
 import { Model, Types } from 'mongoose';
 import { S3Service } from 'src/s3/s3.service';
-import { Project, ProjectDocument } from 'src/projects/entities/project.entity';
-import { User, UserDocument } from 'src/users/entities/user.entity';
-import {
-  Developer,
-  DeveloperDoc,
-} from 'src/developer/entities/developer.entity';
+import { ProjectsService } from 'src/projects/projects.service';
+import { DeveloperService } from 'src/developer/developer.service';
+import { UsersService } from 'src/users/users.service';
 
 @Injectable()
 export class ReelsService {
   constructor(
     @InjectModel(Reel.name) private reelModel: Model<ReelDocument>,
-    @InjectModel(Developer.name) private developerModel: Model<DeveloperDoc>,
-    @InjectModel(Project.name) private projectModel: Model<ProjectDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-    private s3Service: S3Service,
+    @Inject(forwardRef(() => ProjectsService))
+    private readonly projectsService: ProjectsService,
+    private readonly developerService: DeveloperService,
+    private readonly usersService: UsersService,
+    private readonly s3Service: S3Service,
   ) {}
 
+  /*
+  =========================================  
+        Core CRUD & Route Functions
+  =========================================  
+  */
+
+  // Upload a new reel
   async uploadReel(
     createReelDto: CreateReelDto,
     file: Express.Multer.File,
     thumbnail: Express.Multer.File,
   ) {
-    const project = await this.projectModel.findById(createReelDto.projectId);
+    const project = await this.projectsService.findProjectById(
+      createReelDto.projectId,
+    );
     if (!project) {
       throw new NotFoundException('Project not found');
     }
 
-    const developer = await this.developerModel.findById(project.developer);
+    const developer = await this.developerService.findOneDeveloper(
+      project.developer,
+    );
     if (!developer) {
       throw new NotFoundException('Developer not found');
     }
@@ -40,7 +54,7 @@ export class ReelsService {
     // Upload reel to S3
     const { key, url } = await this.s3Service.uploadFile(file, 'reels');
 
-    //upload thumbnail to S3
+    // Upload thumbnail to S3
     const { url: thumbnailUrl } = await this.s3Service.uploadFile(
       thumbnail,
       'images',
@@ -56,16 +70,20 @@ export class ReelsService {
       s3Key: key,
     });
     const savedReel = await reel.save();
-    // Push reel to project's reels all data array
-    await this.projectModel.findByIdAndUpdate(createReelDto.projectId, {
-      $push: { reels: savedReel._id },
-    });
+
+    // Push reel to project's reels array via ProjectsService
+    await this.projectsService.addReelToProject(
+      createReelDto.projectId,
+      savedReel._id,
+    );
+
     return {
       message: 'Reel uploaded successfully',
       reel: savedReel,
     };
   }
 
+  // Find all reels
   async findAllReels() {
     return this.reelModel
       .find()
@@ -73,6 +91,7 @@ export class ReelsService {
       .sort({ createdAt: -1 });
   }
 
+  // Find one reel by ID
   async findOneReel(id: Types.ObjectId) {
     const reel = await this.reelModel
       .findById(id)
@@ -87,6 +106,7 @@ export class ReelsService {
     };
   }
 
+  // Update reel details and replace files on S3 if provided
   async updateReel(
     id: Types.ObjectId,
     updateReelDto: UpdateReelDto,
@@ -148,24 +168,88 @@ export class ReelsService {
     };
   }
 
+  // Remove single reel
   async removeReel(id: Types.ObjectId) {
     const reel = await this.reelModel.findByIdAndDelete(id);
     if (!reel) {
       throw new NotFoundException('Reel not found');
     }
-    // Pull reel from project's reels array
-    await this.projectModel.findByIdAndUpdate(reel.projectId, {
-      $pull: { reels: reel._id },
-    });
+
+    // Pull reel from project's reels array via ProjectsService
+    await this.projectsService.removeReelFromProject(
+      reel.projectId,
+      reel._id,
+    );
+
     // Delete reel from S3
     await this.s3Service.deleteFile(reel.s3Key);
     // Delete thumbnail from S3
     await this.s3Service.deleteFile(reel.thumbnail || '');
+
     return {
       message: 'Reel deleted successfully',
     };
   }
 
+  // Save reel for user
+  async saveReel(id: Types.ObjectId, userId: Types.ObjectId) {
+    const reel = await this.reelModel.findById(id);
+    if (!reel) {
+      throw new NotFoundException('Reel not found');
+    }
+
+    const result = await this.usersService.addSavedReel(userId, id);
+    if (result.alreadySaved) {
+      return { message: 'Reel already saved' };
+    }
+
+    await this.reelModel.findByIdAndUpdate(
+      id,
+      { $inc: { saveCount: 1 } },
+      { new: true },
+    );
+
+    return { message: 'Reel saved successfully' };
+  }
+
+  // Unsave reel for user
+  async unsaveReel(id: Types.ObjectId, userId: Types.ObjectId) {
+    const reel = await this.reelModel.findById(id);
+    if (!reel) {
+      throw new NotFoundException('Reel not found');
+    }
+
+    await this.usersService.removeSavedReel(userId, id);
+
+    await this.reelModel.findByIdAndUpdate(
+      id,
+      { $inc: { saveCount: -1 } },
+      { new: true },
+    );
+
+    return { message: 'Reel unsaved successfully' };
+  }
+
+  // Get all saved reels for user
+  async getSavedReelsByUser(userId: Types.ObjectId) {
+    const savedReelIds = await this.usersService.getSavedReelIds(userId);
+    const reels = await this.reelModel
+      .find({ _id: { $in: savedReelIds } })
+      .select('id title thumbnail');
+
+    return {
+      message: 'Saved reels fetched successfully',
+      reels,
+    };
+  }
+
+  /*
+  =========================================  
+              Helper Functions
+  =========================================  
+  */
+
+  // Increment view count for a reel
   async incrementViewCount(id: Types.ObjectId) {
     const reel = await this.reelModel.findByIdAndUpdate(id, {
       $inc: { viewCount: 1 },
@@ -178,74 +262,33 @@ export class ReelsService {
     };
   }
 
-  async saveReel(id: Types.ObjectId, userId: Types.ObjectId) {
-    const reel = await this.reelModel.findById(id);
-    if (!reel) {
-      throw new NotFoundException('Reel not found');
+  // Cascade delete multiple reels by IDs (used by ProjectsService and DeveloperService)
+  async deleteManyByIds(reelIds: Types.ObjectId[]) {
+    if (!reelIds || reelIds.length === 0) return;
+    const reels = await this.reelModel.find({
+      _id: { $in: reelIds },
+    });
+    for (const reel of reels) {
+      if (reel.s3Key) {
+        try {
+          await this.s3Service.deleteFile(reel.s3Key);
+        } catch (error) {
+          console.error(`Failed to delete reel S3 file: ${reel.s3Key}`, error);
+        }
+      }
+      if (reel.thumbnail) {
+        try {
+          await this.s3Service.deleteFile(reel.thumbnail);
+        } catch (error) {
+          console.error(
+            `Failed to delete reel thumbnail S3 file: ${reel.thumbnail}`,
+            error,
+          );
+        }
+      }
     }
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    //check if reel is already saved
-    if (user.savedReels.includes(id)) {
-      return { message: 'Reel already saved' };
-    }
-    //increment save count
-    await this.reelModel.findByIdAndUpdate(
-      id,
-      { $inc: { saveCount: 1 } },
-      { new: true },
-    );
-    //save reel
-    await this.userModel.findByIdAndUpdate(
-      userId,
-      { $addToSet: { savedReels: id } },
-      { new: true },
-    );
-    return { message: 'Reel saved successfully' };
-  }
-
-  async unsaveReel(id: Types.ObjectId, userId: Types.ObjectId) {
-    const reel = await this.reelModel.findById(id);
-    if (!reel) {
-      throw new NotFoundException('Reel not found');
-    }
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    //check if reel is not saved
-    if (!user.savedReels.includes(id)) {
-      throw new NotFoundException('Reel not saved');
-    }
-    //decrement save count
-    await this.reelModel.findByIdAndUpdate(
-      id,
-      { $inc: { saveCount: -1 } },
-      { new: true },
-    );
-    //unsave reel
-    await this.userModel.findByIdAndUpdate(
-      userId,
-      { $pull: { savedReels: id } },
-      { new: true },
-    );
-    return { message: 'Reel unsaved successfully' };
-  }
-
-  async getSavedReelsByUser(userId: Types.ObjectId) {
-    const user = await this.userModel.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    const reels = await this.reelModel
-      .find({ _id: { $in: user.savedReels } })
-      .select('id title thumbnail');
-    return {
-      message: 'Saved reels fetched successfully',
-      reels,
-    };
+    await this.reelModel.deleteMany({
+      _id: { $in: reelIds },
+    });
   }
 }

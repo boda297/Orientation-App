@@ -15,8 +15,6 @@ import { FilesModule } from './files/files.module';
 import { NewsModule } from './news/news.module';
 import { WatchHistoryModule } from './watch-history/watch-history.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
-import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({

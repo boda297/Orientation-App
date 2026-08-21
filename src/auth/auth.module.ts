@@ -19,6 +19,10 @@ import refreshJwtConfig from './config/refresh-jwt.config';
 import { RefreshJwtStrategy } from './strategies/refreshToken.startegy';
 import { APP_GUARD } from '@nestjs/core';
 import { RolesGuard } from './guards/roles.guard';
+import googleOauthConfig from './config/google-oauth.config';
+import { GoogleStrategy } from './strategies/google.strategy';
+import appleOauthConfig from './config/apple-oauth.config';
+import { AppleStrategy } from './strategies/apple.strategy';
 
 @Module({
   imports: [
@@ -31,6 +35,8 @@ import { RolesGuard } from './guards/roles.guard';
     EmailModule,
     ConfigModule.forFeature(jwtConfig),
     ConfigModule.forFeature(refreshJwtConfig),
+    ConfigModule.forFeature(googleOauthConfig),
+    ConfigModule.forFeature(appleOauthConfig),
   ],
   controllers: [AuthController],
   providers: [
@@ -39,6 +45,8 @@ import { RolesGuard } from './guards/roles.guard';
     JwtAuthGuard,
     OtpService,
     RefreshJwtStrategy,
+    GoogleStrategy,
+    AppleStrategy,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

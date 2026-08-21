@@ -17,9 +17,16 @@ import { ConfigType } from '@nestjs/config';
 import { Types } from 'mongoose';
 import { AuthJwtPayload } from './types/auth-jwtPayload';
 import * as argon2 from 'argon2';
+import googleOauthConfig from './config/google-oauth.config';
+import appleOauthConfig from './config/apple-oauth.config';
+import { OAuth2Client } from 'google-auth-library';
+import appleSignin from 'apple-signin-auth';
+import { AppleMobileDto } from './dto/apple-mobile.dto';
 
 @Injectable()
 export class AuthService {
+  private googleOAuthClient: OAuth2Client;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
@@ -27,12 +34,25 @@ export class AuthService {
     private jwtService: JwtService,
     @Inject(refreshJwtConfig.KEY)
     private refreshJwtConfiguration: ConfigType<typeof refreshJwtConfig>,
-  ) {}
+    @Inject(googleOauthConfig.KEY)
+    private googleConfiguration: ConfigType<typeof googleOauthConfig>,
+    @Inject(appleOauthConfig.KEY)
+    private appleConfiguration: ConfigType<typeof appleOauthConfig>,
+  ) {
+    this.googleOAuthClient = new OAuth2Client();
+  }
 
   // Validate user credentials
   async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
     if (!user) throw new UnauthorizedException('Invalid credentials');
+
+    if (!user.password) {
+      throw new UnauthorizedException(
+        'This account was registered using Google. Please log in with Google or reset your password to create one.',
+      );
+    }
+
     const isPasswordMatch = await bcrypt.compare(password, user.password);
     if (!isPasswordMatch)
       throw new UnauthorizedException('Invalid credentials');
@@ -348,5 +368,181 @@ export class AuthService {
       success: true,
       message: 'Password has been reset successfully',
     };
+  }
+
+  async validateGoogleUser(googleUser: {
+    email: string;
+    username: string;
+    googleId?: string;
+  }) {
+    const userExists = await this.usersService.findByEmail(googleUser.email);
+    // If user exists: ensure email is verified and return user document
+    if (userExists) {
+      if (!userExists.isEmailVerified) {
+        await this.usersService.update(userExists._id, {
+          isEmailVerified: true,
+        });
+        userExists.isEmailVerified = true;
+      }
+      return userExists;
+    }
+
+    // If user does not exist: create new user without password (pure OAuth)
+    const newUser = await this.usersService.createGoogleUser({
+      email: googleUser.email,
+      username: googleUser.username,
+      provider: 'google',
+      googleId: googleUser.googleId,
+      isEmailVerified: true,
+    });
+    return newUser;
+  }
+
+  // Validate Google ID Token from Mobile Apps (Flutter, React Native, iOS, Android)
+  async validateGoogleIdToken(idToken: string) {
+    if (!idToken) {
+      throw new BadRequestException('idToken is required');
+    }
+
+    try {
+      const audiences = [
+        this.googleConfiguration.clientId,
+        this.googleConfiguration.iosClientId,
+        this.googleConfiguration.androidClientId,
+      ].filter((id): id is string => Boolean(id));
+
+      const ticket = await this.googleOAuthClient.verifyIdToken({
+        idToken,
+        audience: audiences.length > 0 ? audiences : undefined,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new UnauthorizedException('Invalid Google ID token payload');
+      }
+
+      const email = payload.email;
+      const username =
+        payload.name ||
+        [payload.given_name, payload.family_name].filter(Boolean).join(' ') ||
+        'Google User';
+      const googleId = payload.sub;
+
+      const user = await this.validateGoogleUser({
+        email,
+        username,
+        googleId,
+      });
+
+      return await this.login(user._id, user.role);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException(
+        `Google token verification failed: ${error.message}`,
+      );
+    }
+  }
+
+  // Validate or create user from Apple Profile
+  async validateAppleUser(appleUser: {
+    email?: string;
+    username?: string;
+    appleId: string;
+  }) {
+    // 1. Check if user already exists by appleId
+    let user = await this.usersService.findByAppleId(appleUser.appleId);
+    if (user) {
+      return user;
+    }
+
+    // 2. If email is provided, check if user exists by email (account linking)
+    if (appleUser.email) {
+      user = await this.usersService.findByEmail(appleUser.email);
+      if (user) {
+        await this.usersService.update(user._id, {
+          appleId: appleUser.appleId,
+          isEmailVerified: true,
+        });
+        user.appleId = appleUser.appleId;
+        user.isEmailVerified = true;
+        return user;
+      }
+    }
+
+    // 3. If new user, create Apple account
+    const email =
+      appleUser.email || `${appleUser.appleId}@privaterelay.appleid.com`;
+    const username = appleUser.username || 'Apple User';
+
+    const newUser = await this.usersService.createAppleUser({
+      email,
+      username,
+      appleId: appleUser.appleId,
+      isEmailVerified: true,
+    });
+
+    return newUser;
+  }
+
+  // Validate Apple Identity Token from Mobile Apps (Flutter, React Native, iOS)
+  async validateAppleIdToken(appleMobileDto: AppleMobileDto) {
+    if (!appleMobileDto.identityToken) {
+      throw new BadRequestException('identityToken is required');
+    }
+
+    try {
+      const audiences = [
+        this.appleConfiguration.clientID,
+        this.appleConfiguration.bundleId,
+      ].filter((id): id is string => Boolean(id));
+
+      const { sub: appleId, email } = await appleSignin.verifyIdToken(
+        appleMobileDto.identityToken,
+        {
+          audience: audiences.length > 0 ? audiences : undefined,
+          ignoreExpiration: false,
+        },
+      );
+
+      // Determine user name from mobile payload (sent only on first login)
+      let username = 'Apple User';
+      if (appleMobileDto.name) {
+        username = [
+          appleMobileDto.name.firstName,
+          appleMobileDto.name.lastName,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      } else if (appleMobileDto.firstName || appleMobileDto.lastName) {
+        username = [appleMobileDto.firstName, appleMobileDto.lastName]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      const userEmail = email || appleMobileDto.email;
+
+      const user = await this.validateAppleUser({
+        email: userEmail,
+        username: username || 'Apple User',
+        appleId,
+      });
+
+      return await this.login(user._id, user.role);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException(
+        `Apple token verification failed: ${error.message}`,
+      );
+    }
   }
 }

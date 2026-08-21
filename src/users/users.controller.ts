@@ -7,11 +7,12 @@ import {
   Param,
   Delete,
   UseGuards,
+  Query,
   Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateUserByAdminDto } from './dto/updateUserByAdmin.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import { Role } from '../auth/enum/roles.enum';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -19,6 +20,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Types } from 'mongoose';
+import { CreateUserByAdminDto } from './dto/createUserByAdmin.dto';
+import { UpdateUserProfileDto } from './dto/updateUserProfile.dto';
 
 @Controller('users')
 export class UsersController {
@@ -33,23 +36,30 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
+  // @access : Accessible by Superadmin only
+  // @description : Create a new user by admin without email verification
+  @Post('createUserByAdmin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN)
+  createUserByAdmin(@Body() createUserByAdminDto: CreateUserByAdminDto) {
+    return this.usersService.createUserByAdmin(createUserByAdminDto);
+  }
+
   // @access : Accessible by Superadmin and Admin
   // @description : Get all users
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN, Role.ADMIN)
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@Query('limit') limit: number, @Query('page') page: number) {
+    return this.usersService.findAll(limit, page);
   }
 
   // @access : Authenticated users (JWT)
   // @description : Get current user's saved projects
   @Get('saved-projects')
   @UseGuards(JwtAuthGuard)
-  getSavedProjects(@CurrentUser('sub') userId: string) {
-    return this.usersService.getSavedProjects(
-      userId as unknown as Types.ObjectId,
-    );
+  getSavedProjects(@Req() req) {
+    return this.usersService.getSavedProjects(req.user.sub as Types.ObjectId);
   }
 
   // @access : Authenticated users (JWT)
@@ -65,7 +75,7 @@ export class UsersController {
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   getProfile(@Req() req) {
-    return this.usersService.findOne(req.user.sub);
+    return this.usersService.findUserProfile(req.user.sub);
   }
 
   // @access : Accessible by Superadmin and Admin
@@ -79,25 +89,19 @@ export class UsersController {
 
   // @access : Authenticated users (JWT)
   // @description : Update current user's profile
-  @Patch('profile')
+  @Patch('updateProfile')
   @UseGuards(JwtAuthGuard)
-  updateProfile(
-    @CurrentUser('sub') userId: string,
-    @Body() updateUserDto: UpdateUserDto,
-  ) {
-    return this.usersService.update(
-      userId as unknown as Types.ObjectId,
-      updateUserDto,
-    );
+  updateProfile(@Req() req, @Body() updateUserDto: UpdateUserProfileDto) {
+    return this.usersService.updateprofile(req.user.sub, updateUserDto);
   }
 
-  // @access : Accessible by Superadmin and Admin
-  // @description : Update user by ID
-  @Patch(':id')
+  // @access : Accessible by Superadmin only
+  // @description : Update user's role by ID
+  @Patch(':id/role')
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.SUPERADMIN, Role.ADMIN)
-  update(@Param() params: MongoIdDto, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(params.id, updateUserDto);
+  @Roles(Role.SUPERADMIN)
+  updateUserRole(@Param() params: MongoIdDto, @Body() updateUserDto: UpdateUserByAdminDto) {
+    return this.usersService.updateUserRole(params.id, updateUserDto);
   }
 
   // @access : Accessible by Superadmin only

@@ -1,20 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigType } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import emailConfig from './config/email.config';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private transporter: nodemailer.Transporter;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    @Inject(emailConfig.KEY)
+    private readonly emailConfiguration: ConfigType<typeof emailConfig>,
+  ) {
     this.transporter = nodemailer.createTransport({
-      host: this.configService.get<string>('SMTP_HOST'),
-      port: this.configService.get<number>('SMTP_PORT') || 587,
-      secure: false, // true for 465, false for other ports
+      host: this.emailConfiguration.host,
+      port: this.emailConfiguration.port,
+      secure: this.emailConfiguration.secure,
       auth: {
-        user: this.configService.get<string>('SMTP_USER'),
-        pass: this.configService.get<string>('SMTP_PASS'),
+        user: this.emailConfiguration.user,
+        pass: this.emailConfiguration.pass,
       },
     });
   }
@@ -31,7 +35,7 @@ export class EmailService {
    */
   async sendVerificationOTP(email: string, otp: string): Promise<void> {
     const mailOptions = {
-      from: `"Orientation App" <${this.configService.get('SMTP_FROM')}>`,
+      from: `"Orientation App" <${this.emailConfiguration.from}>`,
       to: email,
       subject: 'Email Verification Code - Orientation',
       text: `Your verification code is: ${otp}\n\nThis code will expire in 2 minutes.\n\nIf you didn't create an account, please ignore this email.`,
@@ -51,7 +55,7 @@ export class EmailService {
    */
   async sendPasswordResetOTP(email: string, otp: string): Promise<void> {
     const mailOptions = {
-      from: `"Orientation App" <${this.configService.get('SMTP_FROM')}>`,
+      from: `"Orientation App" <${this.emailConfiguration.from}>`,
       to: email,
       subject: 'Password Reset Code - Orientation',
       text: `Your password reset code is: ${otp}\n\nThis code will expire in 2 minutes.\n\nIf you didn't request a password reset, please ignore this email.`,
@@ -83,7 +87,7 @@ export class EmailService {
     },
   ): Promise<void> {
     const mailOptions = {
-      from: `"Orientation App" <${this.configService.get('SMTP_FROM')}>`,
+      from: `"Orientation App" <${this.emailConfiguration.from}>`,
       to: toEmail,
       subject: `Join Developer Request - ${payload.name}`,
       text: [

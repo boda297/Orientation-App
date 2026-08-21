@@ -13,6 +13,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(loginDto: LoginDto) {
+    if (loginDto.password == '') {
+      throw new UnauthorizedException('Please Provide The Password');
+    }
     return this.authService.validateUser(loginDto.email, loginDto.password);
   }
 }

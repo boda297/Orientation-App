@@ -7,6 +7,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Get,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
@@ -20,6 +21,10 @@ import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RefreshAuthGuard } from './guards/refresh-auth.guard';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { GoogleAuthGuard } from './guards/google-auth.guard';
+import { GoogleMobileDto } from './dto/google-mobile.dto';
+import { AppleAuthGuard } from './guards/apple-auth.guard';
+import { AppleMobileDto } from './dto/apple-mobile.dto';
 
 const cookieOptions = {
   httpOnly: true,
@@ -72,10 +77,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(RefreshAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
-  async refresh(
-    @Req() req,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async refresh(@Req() req, @Res({ passthrough: true }) res: Response) {
     const result = await this.authService.refreshToken(
       req.user.sub,
       req.user.role,
@@ -97,13 +99,119 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 5, ttl: 60000 } })
-  async signout(
-    @Req() req,
-    @Res({ passthrough: true }) res: Response,
-  ) {
+  async signout(@Req() req, @Res({ passthrough: true }) res: Response) {
     res.clearCookie('accessToken', cookieOptions);
     res.clearCookie('refreshToken', cookieOptions);
     return this.authService.signout(req.user.sub);
+  }
+
+  @Public()
+  @Get('google/login')
+  @UseGuards(GoogleAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async googleLogin() {}
+
+  @Public()
+  @Get('google/callback')
+  @UseGuards(GoogleAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async googleAuthCallback(@Req() req, @Res() res: Response) {
+    const user = req.user;
+    const response = await this.authService.login(user._id, user.role);
+
+    res.cookie('accessToken', response.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', response.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}?token=${response.accessToken}`);
+  }
+
+  // Native Mobile Google Sign-In (Flutter, React Native, iOS, Android)
+  @Public()
+  @Post('google/mobile')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async googleMobileLogin(
+    @Body() googleMobileDto: GoogleMobileDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.validateGoogleIdToken(
+      googleMobileDto.idToken,
+    );
+
+    res.cookie('accessToken', result.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', result.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return result;
+  }
+
+  // ==================== APPLE AUTHENTICATION ====================
+
+  @Public()
+  @Get('apple/login')
+  @UseGuards(AppleAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async appleLogin() {}
+
+  @Public()
+  @Post('apple/callback')
+  @UseGuards(AppleAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async appleAuthCallback(@Req() req, @Res() res: Response) {
+    const user = req.user;
+    const response = await this.authService.login(user._id, user.role);
+
+    res.cookie('accessToken', response.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', response.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    res.redirect(`${frontendUrl}?token=${response.accessToken}`);
+  }
+
+  // Native Mobile Apple Sign-In (Flutter, React Native, iOS)
+  @Public()
+  @Post('apple/mobile')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async appleMobileLogin(
+    @Body() appleMobileDto: AppleMobileDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result =
+      await this.authService.validateAppleIdToken(appleMobileDto);
+
+    res.cookie('accessToken', result.accessToken, {
+      ...cookieOptions,
+      maxAge: 5 * 60 * 1000,
+    });
+    res.cookie('refreshToken', result.refreshToken, {
+      ...cookieOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return result;
   }
 
   // ==================== EMAIL VERIFICATION ====================
@@ -155,5 +263,4 @@ export class AuthController {
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(resetPasswordDto);
   }
-
 }

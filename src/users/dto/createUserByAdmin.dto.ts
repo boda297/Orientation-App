@@ -6,9 +6,11 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  IsEnum,
 } from 'class-validator';
+import { Role } from 'src/auth/enum/roles.enum';
 
-export class CreateUserDto {
+export class CreateUserByAdminDto {
   @IsString()
   @IsNotEmpty()
   username: string;
@@ -26,4 +28,8 @@ export class CreateUserDto {
   @MinLength(8)
   @MaxLength(20)
   password: string;
+
+  @IsEnum(Role)
+  @IsNotEmpty()
+  role: Role;
 }

@@ -2,7 +2,7 @@
 
 This document contains all routes in the Orientation App Backend project, including request and response data structures.
 
-**Base URL**: `/` (configurable via PORT environment variable, default: 3000)
+**Base URL**: `/api/v1` (configurable via `PORT` environment variable, default: 5000)
 
 ---
 
@@ -25,8 +25,9 @@ string; // "Hello World!"
 
 ### POST `/auth/register`
 
-**Description**: Register a new user (unverified). Sends 4-digit OTP to email for verification.  
-**Authentication**: None  
+**Description**: Register a new user (unverified). Sends a 4-digit OTP to the user's email for verification.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
 **Request Body** (`RegisterDto`):
 
 ```typescript
@@ -48,20 +49,21 @@ string; // "Hello World!"
 }
 ```
 
-**Note**: User CANNOT login until email is verified via OTP. OTP expires in 2 minutes.
+**Note**: User CANNOT log in until their email is verified via OTP. OTP expires in 2 minutes.
 
 ---
 
 ### POST `/auth/verify-email`
 
 **Description**: Verify email with 4-digit OTP.  
-**Authentication**: None  
-**Request Body**:
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request Body** (`VerifyEmailDto`):
 
 ```typescript
 {
   email: string; // Valid email address (required)
-  otp: string; // 4-digit OTP (required)
+  otp: string; // 4-digit OTP string (required)
 }
 ```
 
@@ -76,17 +78,18 @@ string; // "Hello World!"
 
 **Error Responses**:
 
-- `400 Bad Request`: Invalid verification code
-- `400 Bad Request`: Verification code has expired
-- `400 Bad Request`: Email already verified
+- `400 Bad Request`: "User not found"
+- `400 Bad Request`: "Email already verified"
+- `400 Bad Request`: "Invalid verification code" / "Verification code has expired"
 
 ---
 
 ### POST `/auth/resend-verification`
 
 **Description**: Resend verification OTP to email  
-**Authentication**: None  
-**Request Body**:
+**Authentication**: None (Public)  
+**Rate Limit**: 3 requests / 60 seconds  
+**Request Body** (`ResendVerificationDto`):
 
 ```typescript
 {
@@ -107,8 +110,9 @@ string; // "Hello World!"
 
 ### POST `/auth/login`
 
-**Description**: Login endpoint for VERIFIED users only  
-**Authentication**: None  
+**Description**: Login with email and password for verified users. Issues access & refresh tokens and sets HTTP-only cookies.  
+**Authentication**: None (Public)  
+**Rate Limit**: 10 requests / 60 seconds  
 **Request Body** (`LoginDto`):
 
 ```typescript
@@ -122,34 +126,68 @@ string; // "Hello World!"
 
 ```typescript
 {
-  user: {
-    _id: string;
-    username: string;
-    email: string;
-    phoneNumber: string;
-    savedProjects: string[];
-    role: string;
-    isEmailVerified: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-  };
-  accessToken: string;   // Short-lived JWT access token (default: 15 minutes)
-  refreshToken: string;  // Long-lived refresh token (default: 7 days)
+  id: string; // User MongoDB ObjectId
+  accessToken: string; // JWT access token
+  refreshToken: string; // JWT refresh token
 }
 ```
 
+**Cookies Set**:
+- `accessToken`: HTTP-only cookie (Max age: 5 minutes)
+- `refreshToken`: HTTP-only cookie (Max age: 7 days)
+
 **Error Responses**:
 
-- `401 Unauthorized`: Invalid credentials
-- `401 Unauthorized`: "Please verify your email before logging in"
+- `401 Unauthorized`: "Invalid credentials"
+- `401 Unauthorized`: "This account was registered using Google. Please log in with Google or reset your password to create one."
+
+---
+
+### POST `/auth/refresh`
+
+**Description**: Refresh tokens using refresh token rotation.  
+**Authentication**: Requires valid Refresh Token (passed via HTTP-only cookie `refreshToken` or Bearer header)  
+**Rate Limit**: 10 requests / 60 seconds  
+**Request**: None (reads token from cookie or Authorization header)  
+**Response**:
+
+```typescript
+{
+  id: string; // User MongoDB ObjectId
+  accessToken: string; // New short-lived access token
+  refreshToken: string; // New rotated refresh token
+}
+```
+
+**Cookies Updated**:
+- `accessToken`: Updated HTTP-only cookie
+- `refreshToken`: Updated HTTP-only cookie
+
+---
+
+### POST `/auth/signout`
+
+**Description**: Sign out the user, clear auth cookies, and invalidate stored refresh token in the database.  
+**Authentication**: Required (`JwtAuthGuard` - Bearer token or `accessToken` cookie)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request**: None  
+**Response**:
+
+```typescript
+{
+  success: boolean; // true
+  message: string; // "User signed out successfully"
+}
+```
 
 ---
 
 ### POST `/auth/forgot-password`
 
-**Description**: Request password reset. Sends 4-digit OTP to email.  
-**Authentication**: None  
-**Request Body**:
+**Description**: Request password reset. Sends a 4-digit OTP to the user's email.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request Body** (`ForgotPasswordDto`):
 
 ```typescript
 {
@@ -166,20 +204,19 @@ string; // "Hello World!"
 }
 ```
 
-**Note**: Response doesn't reveal if email exists for security.
-
 ---
 
 ### POST `/auth/verify-reset-otp`
 
-**Description**: Verify password reset OTP (optional step before reset).  
-**Authentication**: None  
-**Request Body**:
+**Description**: Step 2 of password reset — Verify the OTP received via email before setting a new password.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request Body** (`VerifyEmailDto`):
 
 ```typescript
 {
   email: string; // Valid email address (required)
-  otp: string; // 4-digit OTP (required)
+  otp: string; // 4-digit OTP string (required)
 }
 ```
 
@@ -188,28 +225,23 @@ string; // "Hello World!"
 ```typescript
 {
   success: boolean; // true
-  message: string; // "OTP verified. You can now reset your password."
+  message: string; // "OTP verified successfully. You can now reset your password."
 }
 ```
-
-**Error Responses**:
-
-- `400 Bad Request`: Invalid reset code
-- `400 Bad Request`: Reset code has expired
 
 ---
 
 ### POST `/auth/reset-password`
 
-**Description**: Reset password using email and OTP  
-**Authentication**: None  
-**Request Body**:
+**Description**: Step 3 of password reset — Set a new password after OTP has been verified in Step 2.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request Body** (`ResetPasswordDto`):
 
 ```typescript
 {
   email: string; // Valid email address (required)
-  otp: string; // 4-digit OTP (required)
-  newPassword: string; // New password (required)
+  newPassword: string; // New password (8-20 characters) (required)
 }
 ```
 
@@ -218,28 +250,43 @@ string; // "Hello World!"
 ```typescript
 {
   success: boolean; // true
-  message: string; // "Password reset successfully"
+  message: string; // "Password has been reset successfully"
 }
 ```
 
-**Error Responses**:
-
-- `400 Bad Request`: Invalid reset code
-- `400 Bad Request`: Reset code has expired
-
-**Note**: All refresh tokens are invalidated after password reset (logged out of all devices).
+**Note**: All active refresh tokens are invalidated upon password reset to enforce re-authentication.
 
 ---
 
-### POST `/auth/refresh`
+### GET `/auth/google/login`
 
-**Description**: Refresh tokens using rotation (single-use refresh tokens)  
-**Authentication**: None  
-**Request Body** (`RefreshTokenDto`):
+**Description**: Initiates Web Google OAuth 2.0 login flow. Redirects user's browser to Google's consent screen.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request**: None  
+**Response**: `302 Redirect` to `accounts.google.com`
+
+---
+
+### GET `/auth/google/callback`
+
+**Description**: Web Google OAuth 2.0 callback endpoint. Google redirects here with authorization code. Generates JWT tokens, sets HTTP-only auth cookies, and redirects the browser to the frontend.  
+**Authentication**: None (Public - handled by `GoogleAuthGuard`)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Response**: `302 Redirect` to `${FRONTEND_URL}?token=${accessToken}`
+
+---
+
+### POST `/auth/google/mobile`
+
+**Description**: Native Mobile 1-Tap Google Sign-In endpoint (for Flutter, React Native, iOS Swift, Android Kotlin). Verifies the Google `idToken` cryptographically and returns user authentication tokens.  
+**Authentication**: None (Public)  
+**Rate Limit**: 10 requests / 60 seconds  
+**Request Body** (`GoogleMobileDto`):
 
 ```typescript
 {
-  refreshToken: string; // Current refresh token (required)
+  idToken: string; // Google ID token obtained from native mobile Google Sign-In SDK (required)
 }
 ```
 
@@ -247,27 +294,54 @@ string; // "Hello World!"
 
 ```typescript
 {
-  accessToken: string; // New short-lived access token
-  refreshToken: string; // New refresh token (old one is invalidated)
+  id: string; // User MongoDB ObjectId
+  accessToken: string; // JWT access token
+  refreshToken: string; // JWT refresh token
 }
 ```
 
-**Error Responses**:
-
-- `401 Unauthorized`: Invalid or expired refresh token
-- `401 Unauthorized`: "Refresh token reuse detected. All sessions have been revoked."
+**Cookies Set**:
+- `accessToken`: HTTP-only cookie
+- `refreshToken`: HTTP-only cookie
 
 ---
 
-### POST `/auth/logout`
+### GET `/auth/apple/login`
 
-**Description**: Logout from current session (revoke refresh token)  
-**Authentication**: None  
-**Request Body** (`RefreshTokenDto`):
+**Description**: Initiates Web Apple OAuth login flow. Redirects user's browser to Apple's authorization dialog.  
+**Authentication**: None (Public)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Request**: None  
+**Response**: `302 Redirect` to `appleid.apple.com`
+
+---
+
+### POST `/auth/apple/callback`
+
+**Description**: Web Apple OAuth callback endpoint (Apple uses HTTP `form_post`). Generates JWT tokens, sets HTTP-only cookies, and redirects the browser to the frontend.  
+**Authentication**: None (Public - handled by `AppleAuthGuard`)  
+**Rate Limit**: 5 requests / 60 seconds  
+**Response**: `302 Redirect` to `${FRONTEND_URL}?token=${accessToken}`
+
+---
+
+### POST `/auth/apple/mobile`
+
+**Description**: Native Mobile 1-Tap Apple Sign-In endpoint (for iOS Swift, Flutter `sign_in_with_apple`, React Native Apple Authentication). Verifies the Apple `identityToken` cryptographically and returns user tokens.  
+**Authentication**: None (Public)  
+**Rate Limit**: 10 requests / 60 seconds  
+**Request Body** (`AppleMobileDto`):
 
 ```typescript
 {
-  refreshToken: string; // Current refresh token (required)
+  identityToken: string; // Apple identityToken from native Apple SDK (required)
+  firstName?: string; // Optional (provided on first login)
+  lastName?: string; // Optional (provided on first login)
+  email?: string; // Optional (provided on first login)
+  name?: {
+    firstName?: string;
+    lastName?: string;
+  };
 }
 ```
 
@@ -275,65 +349,15 @@ string; // "Hello World!"
 
 ```typescript
 {
-  message: string; // "Logged out successfully"
+  id: string; // User MongoDB ObjectId
+  accessToken: string; // JWT access token
+  refreshToken: string; // JWT refresh token
 }
 ```
 
----
-
-### POST `/auth/logout-all`
-
-**Description**: Logout from all devices (revoke all refresh tokens for the user)  
-**Authentication**: Required (`AuthGuard`)  
-**Request**: None (user ID extracted from access token)
-
-**Response**:
-
-```typescript
-{
-  message: string; // "Logged out from all devices successfully"
-}
-```
-
----
-
-### GET `/auth/sessions`
-
-**Description**: Get all active sessions for the current user  
-**Authentication**: Required (`AuthGuard`)  
-**Request**: None (user ID extracted from access token)
-
-**Response**:
-
-````typescript
-[
-  {
-    _id: string;
-    deviceInfo: string;  // User-Agent string
-    ipAddress: string;   // Client IP address
-    createdAt: Date;     // Session start time
-    expiresAt: Date;     // Session expiry time
-  }
-]
-
----
-
-### POST `/auth/cleanup-unverified`
-
-**Description**: Cleanup unverified users with expired OTPs (Manual or Cron)
-**Authentication**: None (Public)
-**Request**: None
-**Response**:
-
-```typescript
-{
-  success: boolean; // true
-  message: string;  // "Cleaned up X unverified users with expired OTPs"
-  deletedCount: number;
-}
-````
-
-````
+**Cookies Set**:
+- `accessToken`: HTTP-only cookie
+- `refreshToken`: HTTP-only cookie
 
 ---
 
@@ -510,7 +534,7 @@ string; // "Hello World!"
 ### POST `/projects`
 
 **Description**: Create a new project  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
 **Required Role**: `SUPERADMIN` or `ADMIN`  
 **Request Type**: `multipart/form-data`  
 **Request Body** (`CreateProjectDto`):
@@ -537,18 +561,25 @@ string; // "Hello World!"
 
 - `logo`: File (max 1GB, single file, optional)
 - `heroVideo`: File (max 1GB, single file, required)
-- `projectThumbnail`: File (max 1GB, single file, optional)
+- `projectThumbnail`: File (max 1GB, single file, required)
 
-**Response**: Project object
+**Response**:
+
+```typescript
+{
+  message: string; // "Project created successfully"
+  project: string; // Created Project MongoDB ObjectId
+}
+```
 
 ---
 
 ### POST `/projects/upcomming`
 
-**Description**: Create a new upcoming project
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)
-**Required Role**: `SUPERADMIN` or `ADMIN`
-**Request Type**: `multipart/form-data`
+**Description**: Create a new upcoming project (status defaulted to `PLANNING`)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN` or `ADMIN`  
+**Request Type**: `multipart/form-data`  
 **Request Body** (`CreateUpcommingProjectDto`):
 
 ```typescript
@@ -561,14 +592,14 @@ string; // "Hello World!"
 
 **Files**:
 
-- `projectThumbnail`: File (max 1GB, single file, optional)
+- `projectThumbnail`: File (max 1GB, single file, required)
 
 **Response**:
 
 ```typescript
 {
   message: string; // "Upcoming project created successfully"
-  project: Project; // The created project object
+  project: string; // Created Project MongoDB ObjectId
 }
 ```
 
@@ -576,7 +607,7 @@ string; // "Hello World!"
 
 ### GET `/projects`
 
-**Description**: List/search projects with optional filters and pagination. Main listing endpoint.  
+**Description**: List/search projects with optional filters, sorting, and pagination. Main listing endpoint.  
 **Authentication**: None  
 **Query Parameters** (`QueryProjectDto`):
 
@@ -586,33 +617,33 @@ string; // "Hello World!"
   location?: string;     // Optional - filter by location
   status?: string;       // 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED'
   title?: string;       // Optional - filter by title
-  slug?: string;        // Optional - filter by slug
   limit?: number;       // 1-100 (optional) - page size
   page?: number;        // min 1 (optional) - page number (used with limit)
-  sortBy?: string;      // 'newest' | 'trending' | 'saveCount' | 'viewCount' (optional)
+  sortBy?: string;      // 'newest' | other field name (optional)
 }
 ```
 
-**Response**: Array of project objects with basic fields:
+**Response**: Array of project objects:
 
 ```typescript
 Array<{
   _id: string;
+  slug: string;
   title: string;
   location: string;
+  developer: string;
+  status: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
+  createdAt: Date;
+  published: boolean;
   projectThumbnailUrl: string;
 }>;
 ```
-
-Results are filtered by non-deleted projects (`deletedAt: null`), optionally filtered by query params, paginated when `limit`/`page` are provided, and sorted (default: newest first).
-
-**Note**: Specific routes like `GET /projects/featured`, `GET /projects/location`, etc. must be defined before `GET /projects/:id` in the controller so they are matched correctly.
 
 ---
 
 ### GET `/projects/:id`
 
-**Description**: Get a project by ID. Returns project with populated `developer`, `episodes`, `reels`, `inventory`, and `pdf` fields. Automatically increments view count.  
+**Description**: Get a project by ID. Returns project with populated `developer`, `episodes`, `reels`, `inventory`, and `pdf` fields. Automatically increments view count and recalculates trending score.  
 **Authentication**: None  
 **Route Parameters** (`MongoIdDto`):
 
@@ -634,8 +665,8 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
   status: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
   developer: { _id: string; name: string; logoUrl?: string };
   script: string;
-  episodes: Array<{ _id: string; title: string; thumbnail?: string; episodeUrl: string }>;
-  reels: Array<{ _id: string; videoUrl: string; thumbnail?: string }>;
+  episodes: Array<{ _id: string; title: string; thumbnail?: string; episodeUrl: string; duration?: string; episodeOrder: string }>;
+  reels: Array<{ _id: string; videoUrl: string; thumbnail?: string; title: string }>;
   inventory?: { _id: string; title: string; inventoryUrl: string };
   pdf: Array<{ _id: string; title: string; pdfUrl: string }>;
   projectThumbnailUrl: string;
@@ -664,14 +695,28 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Array of featured project objects (title, logoUrl, projectThumbnailUrl, location)
+**Response**: Array of featured project objects:
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  location: string;
+  status: string;
+  developer: string;
+  slug: string;
+  ad_url: string;
+  adUrl: string;
+  heroVideoUrl: string;
+}>;
+```
 
 ---
 
-### GET `/projects/latest`
+### GET `/projects/latest?limit=10`
 
-**Description**: Get latest projects
-**Authentication**: None
+**Description**: Get latest projects (excludes upcoming projects with `status: 'PLANNING'`; default limit = 10)  
+**Authentication**: None  
 **Query Parameters**:
 
 ```typescript
@@ -680,14 +725,120 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Array of latest project objects
+**Response**: Array of latest project objects:
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  slug: string;
+  status: 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
+  location: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+}>;
+```
 
 ---
 
-### GET `/projects/developer`
+### GET `/projects/upcoming?limit=10`
 
-**Description**: Get projects by developer
-**Authentication**: None
+**Description**: Get upcoming projects (`status: 'PLANNING'`; default limit = 10)  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  limit?: string;  // Converted to number, default: 10
+}
+```
+
+**Response**: Array of upcoming project objects:
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  slug: string;
+  status: 'PLANNING';
+  location: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+}>;
+```
+
+---
+
+### GET `/projects/top10?limit=10`
+
+**Description**: Get top 10 / trending projects sorted by `trendingScore` descending with rank  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  limit?: string;  // Converted to number, default: 10
+}
+```
+
+**Response**: Array of top trending project objects with rank:
+
+```typescript
+Array<{
+  rank: number;
+  _id: string;
+  slug: string;
+  title: string;
+  location: string;
+  status: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+  trendingScore: number;
+  saveCount: number;
+  viewCount: number;
+  createdAt: Date;
+}>;
+```
+
+---
+
+### GET `/projects/location?location=North%20Coast&limit=10`
+
+**Description**: Search projects by location using case-insensitive matching  
+**Authentication**: None  
+**Query Parameters**:
+
+```typescript
+{
+  location: string; // Required - filter by location
+  limit?: string;   // Converted to number, default: 10
+}
+```
+
+**Response**: Array of project objects filtered by location:
+
+```typescript
+Array<{
+  _id: string;
+  slug: string;
+  title: string;
+  status: string;
+  location: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+}>;
+```
+
+---
+
+### GET `/projects/developer?developer=60d0fe4f5311236168a109ca`
+
+**Description**: Get projects by developer ID  
+**Authentication**: None  
 **Query Parameters**:
 
 ```typescript
@@ -696,40 +847,27 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Array of project objects belonging to the developer
-
----
-
-### GET `/projects/saved`
-
-**Description**: Get projects saved by the current user
-**Authentication**: Required (`AuthGuard`)
-**Required Role**: Any authenticated user
-**Request**: None
-**Note**: User ID is extracted from JWT token (`req.user.sub`)
-**Response**: Array of saved project objects (id, title, location, projectThumbnailUrl)
-
----
-
-### GET `/projects/location?location=North%20Coast`
-
-**Description**: Get projects by location  
-**Authentication**: None  
-**Query Parameters**:
+**Response**: Array of project objects belonging to the developer:
 
 ```typescript
-{
-  location: string; // Required
-}
+Array<{
+  _id: string;
+  slug: string;
+  title: string;
+  location: string;
+  developer: string;
+  status: string;
+  createdAt: Date;
+  published: boolean;
+  projectThumbnailUrl: string;
+}>;
 ```
-
-**Response**: Array of project objects filtered by location (title, logoUrl, projectThumbnailUrl, location)
 
 ---
 
 ### GET `/projects/status?status=CONSTRUCTION`
 
-**Description**: Get projects by status  
+**Description**: Get projects by specific status  
 **Authentication**: None  
 **Query Parameters**:
 
@@ -739,13 +877,25 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Array of project objects filtered by status (title, logoUrl, projectThumbnailUrl, location)
+**Response**: Array of project objects:
+
+```typescript
+Array<{
+  _id: string;
+  slug: string;
+  title: string;
+  location: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+}>;
+```
 
 ---
 
 ### GET `/projects/title?title=Direction%20White`
 
-**Description**: Get projects by title  
+**Description**: Get project by exact title match (case-insensitive)  
 **Authentication**: None  
 **Query Parameters**:
 
@@ -755,30 +905,28 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 }
 ```
 
-**Response**: Array of project objects filtered by title (title, logoUrl, projectThumbnailUrl, location)
-
----
-
-### GET `/projects/trending`
-
-**Description**: Get trending projects  
-**Authentication**: None  
-**Query Parameters**:
+**Response**: Matching project object:
 
 ```typescript
 {
-  limit?: string;  // Converted to number, default: 10
+  _id: string;
+  slug: string;
+  title: string;
+  location: string;
+  developer: string;
+  status: string;
+  createdAt: Date;
+  published: boolean;
+  projectThumbnailUrl: string;
 }
 ```
-
-**Response**: Array of trending project objects with rank
 
 ---
 
 ### PATCH `/projects/:id`
 
-**Description**: Update a project  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Description**: Update project details and replace S3 media files if provided  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
 **Required Role**: `SUPERADMIN` or `ADMIN`  
 **Route Parameters** (`MongoIdDto`):
 
@@ -813,86 +961,21 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 - `heroVideo`: File (max 1GB, single file, optional) - replaces old hero video
 - `projectThumbnail`: File (max 1GB, single file, optional) - replaces old thumbnail
 
-**Response**: Updated project object
+**Response**:
+
+```typescript
+{
+  message: string; // "Project updated successfully"
+  project: Project; // Updated project object (internal fields like __v, deletedAt, stats excluded)
+}
+```
 
 ---
 
 ### DELETE `/projects/:id`
 
-**Description**: Delete a project  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
-**Required Role**: `SUPERADMIN` or `ADMIN`  
-**Route Parameters** (`MongoIdDto`):
-
-```typescript
-{
-  id: string; // Valid MongoDB ObjectId (required)
-}
-```
-
-**Response**: Deletion confirmation
-
----
-
-### PATCH `/projects/:id/increment-view`
-
-**Description**: Increment view count for a project  
-**Authentication**: Required (`AuthGuard`)  
-**Required Role**: Any authenticated user  
-**Route Parameters** (`MongoIdDto`):
-
-```typescript
-{
-  id: string; // Valid MongoDB ObjectId (required)
-}
-```
-
-**Response**: Updated project object with incremented viewCount
-
----
-
-### PATCH `/projects/:id/save-project`
-
-**Description**: Save a project to user's saved projects  
-**Authentication**: Required (`AuthGuard`)  
-**Required Role**: Any authenticated user  
-**Route Parameters** (`MongoIdDto`):
-
-```typescript
-{
-  id: string; // Valid MongoDB ObjectId (required)
-}
-```
-
-**Note**: User ID is extracted from JWT token (`req.user.sub`)
-
-**Response**: Updated user object with project added to savedProjects
-
----
-
-### PATCH `/projects/:id/unsave-project`
-
-**Description**: Remove a project from user's saved projects  
-**Authentication**: Required (`AuthGuard`)  
-**Required Role**: Any authenticated user  
-**Route Parameters** (`MongoIdDto`):
-
-```typescript
-{
-  id: string; // Valid MongoDB ObjectId (required)
-}
-```
-
-**Note**: User ID is extracted from JWT token (`req.user.sub`)
-
-**Response**: Updated user object with project removed from savedProjects
-
----
-
-### PUT `/projects/:id/publish`
-
-**Description**: Publish a project  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Description**: Soft delete a project and permanently remove all associated episodes, reels, inventory, and PDFs from S3 and database  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
 **Required Role**: `SUPERADMIN` or `ADMIN`  
 **Route Parameters** (`MongoIdDto`):
 
@@ -906,8 +989,78 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  message: string; // "Project published successfully"
-  project: Project; // Updated project object with published=true and publishedAt=current timestamp
+  message: string; // "Project and all associated data deleted successfully"
+  project: Project;
+}
+```
+
+---
+
+### PATCH `/projects/:id/save-project`
+
+**Description**: Save a project to user's bookmarks, increment save count, and recalculate trending score  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Required Role**: Any authenticated user  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Project saved successfully" | "Project already saved"
+}
+```
+
+---
+
+### PATCH `/projects/:id/unsave-project`
+
+**Description**: Remove a project from user's bookmarks, decrement save count, and recalculate trending score  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Required Role**: Any authenticated user  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Project unsaved successfully"
+}
+```
+
+---
+
+### PUT `/projects/:id/publish`
+
+**Description**: Publish a project  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN` or `ADMIN`  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "Project published successfully" | "Project is already published"
+  project: Project; // Updated project object with published=true and publishedAt timestamp
 }
 ```
 
@@ -916,7 +1069,7 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 ### PUT `/projects/:id/unpublish`
 
 **Description**: Unpublish a project  
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
 **Required Role**: `SUPERADMIN` or `ADMIN`  
 **Route Parameters** (`MongoIdDto`):
 
@@ -930,7 +1083,7 @@ Results are filtered by non-deleted projects (`deletedAt: null`), optionally fil
 
 ```typescript
 {
-  message: string; // "Project unpublished successfully"
+  message: string; // "Project unpublished successfully" | "Project is already unpublished"
   project: Project; // Updated project object with published=false and publishedAt=null
 }
 ```
@@ -2222,6 +2375,157 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 
 ---
 
+## 12. Subscription Controller (`/subscription`)
+
+Handles subscription plan creation, payment checkout with Paymob iframe generation, and secure webhook HMAC verification.
+
+### POST `/subscription/paymob/plan`
+
+**Description**: Create a recurring subscription plan on Paymob  
+**Authentication**: Public (`@Public()`)  
+**Request Body** (`CreateSubscriptionPlanInput`):
+
+```typescript
+{
+  name: string;                                           // Required (e.g. "Monthly Premium")
+  amount_cents: number;                                   // Required (e.g. 10000 = 100 EGP)
+  frequency: number;                                      // Required in days (e.g. 30)
+  plan_type?: 'rent' | 'installment' | 'regular' | string; // Optional
+  webhook_url?: string;                                   // Optional
+  reminder_days?: number | string;                        // Optional
+  retrial_days?: number | string;                         // Optional
+  number_of_deductions?: number | string;                 // Optional
+  use_transaction_amount?: boolean;                       // Optional
+  is_active?: boolean;                                    // Optional (default: true)
+  integration?: number;                                   // Optional (Paymob integration ID)
+  fee?: number | string;                                  // Optional
+}
+```
+
+**Response**: Paymob plan creation response object containing plan `id`, `name`, `amount_cents`, etc.
+
+---
+
+### GET `/subscription/paymob/plans`
+
+**Description**: Retrieve all registered subscription plans from Paymob  
+**Authentication**: Public (`@Public()`)  
+**Request**: None  
+**Response**: Array of Paymob subscription plan objects
+
+---
+
+### POST `/subscription/paymob/checkout`
+
+**Description**: Initiates checkout, creates a Paymob order and payment key, and generates an embeddable Paymob iframe URL  
+**Authentication**: Public (`@Public()`)  
+**Request Body**:
+
+```typescript
+{
+  amountCents: number;            // Required amount in cents (e.g. 5000 = 50.00 EGP)
+  merchantOrderId?: string;       // Optional merchant-side reference
+  billingData?: {                 // Optional customer billing information
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number: string;
+    apartment?: string;
+    floor?: string;
+    street?: string;
+    building?: string;
+    shipping_method?: string;
+    postal_code?: string;
+    city?: string;
+    country?: string;
+    state?: string;
+  };
+}
+```
+
+**Response**:
+
+```typescript
+{
+  orderId: number;                  // Paymob numeric order ID
+  merchantOrderId: string;          // Generated unique merchant order identifier
+  paymentToken: string;             // Paymob payment key token
+  iframeUrl: string;                // Complete URL to embed in web/mobile iframe for card payment
+}
+```
+
+---
+
+### POST `/subscription/paymob/webhook`
+
+**Description**: Webhook endpoint for Paymob transaction notifications. Verifies the SHA512 HMAC signature using configured `PAYMOB_HMAC_SECRET`.  
+**Authentication**: Public (`@Public()`)  
+**Query Parameters**:
+- `hmac`: string (HMAC SHA512 hash sent by Paymob in query)
+
+**Request Body**: Paymob transaction callback payload object  
+**Response**:
+
+```typescript
+{
+  success: boolean;  // true
+  hmacValid: boolean; // true if HMAC matches, false otherwise
+}
+```
+
+---
+
+### POST `/subscription`
+
+**Description**: Create a new subscription record  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Request Body** (`CreateSubscriptionDto`)  
+**Response**: Subscription record
+
+---
+
+### GET `/subscription`
+
+**Description**: Retrieve all subscriptions  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Response**: Array of subscription records
+
+---
+
+### GET `/subscription/:id`
+
+**Description**: Retrieve a single subscription by ID  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Route Parameters**:
+- `id`: number
+
+**Response**: Subscription record
+
+---
+
+### PATCH `/subscription/:id`
+
+**Description**: Update a subscription by ID  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Route Parameters**:
+- `id`: number
+
+**Request Body** (`UpdateSubscriptionDto`)  
+**Response**: Updated subscription record
+
+---
+
+### DELETE `/subscription/:id`
+
+**Description**: Remove a subscription by ID  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Route Parameters**:
+- `id`: number
+
+**Response**: Deletion confirmation
+
+---
+
 ## Response Entities
 
 ### User Entity
@@ -2366,6 +2670,17 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
   s3Key: string; // S3 object key
   createdAt: Date;
   updatedAt: Date;
+}
+```
+
+### Paymob Checkout Session Entity
+
+```typescript
+{
+  orderId: number;
+  merchantOrderId: string;
+  paymentToken: string;
+  iframeUrl: string;
 }
 ```
 

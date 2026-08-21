@@ -302,4 +302,48 @@ export class FilesService {
     }
     return project;
   }
+
+  async deleteInventoriesByIds(inventoryIds: Types.ObjectId[]) {
+    if (!inventoryIds || inventoryIds.length === 0) return;
+    const inventories = await this.inventoryModel.find({
+      _id: { $in: inventoryIds },
+    });
+    for (const inventory of inventories) {
+      if (inventory.s3Key) {
+        try {
+          await this.s3Service.deleteFile(inventory.s3Key);
+        } catch (error) {
+          this.logger.error(
+            `Failed to delete inventory S3 file: ${inventory.s3Key}`,
+            error,
+          );
+        }
+      }
+    }
+    await this.inventoryModel.deleteMany({
+      _id: { $in: inventoryIds },
+    });
+  }
+
+  async deletePdfsByIds(pdfIds: Types.ObjectId[]) {
+    if (!pdfIds || pdfIds.length === 0) return;
+    const pdfs = await this.fileModel.find({
+      _id: { $in: pdfIds },
+    });
+    for (const pdf of pdfs) {
+      if (pdf.s3Key) {
+        try {
+          await this.s3Service.deleteFile(pdf.s3Key);
+        } catch (error) {
+          this.logger.error(
+            `Failed to delete PDF S3 file: ${pdf.s3Key}`,
+            error,
+          );
+        }
+      }
+    }
+    await this.fileModel.deleteMany({
+      _id: { $in: pdfIds },
+    });
+  }
 }

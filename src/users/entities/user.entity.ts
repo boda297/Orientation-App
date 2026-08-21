@@ -11,8 +11,22 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true })
   email: string;
 
-  @Prop({ required: true })
-  password: string;
+  @Prop({ required: false, default: null })
+  password?: string;
+
+  @Prop({
+    type: String,
+    required: false,
+    default: 'local',
+    enum: ['local', 'google', 'apple'],
+  })
+  provider: string;
+
+  @Prop({ required: false, default: null })
+  googleId?: string;
+
+  @Prop({ required: false, default: null })
+  appleId?: string;
 
   @Prop({ required: false, default: null })
   phoneNumber: string;
