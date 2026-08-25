@@ -25,6 +25,7 @@ import { Role } from 'src/auth/enum/roles.enum';
 import { Types } from 'mongoose';
 import { QueryProjectDto } from './dto/query-project.dto';
 import { CreateUpcommingProjectDto } from './dto/create-upcomming-project.dto';
+import { Public } from 'src/auth/decorators/public.decorator';
 
 @Controller('projects')
 export class ProjectsController {
@@ -93,6 +94,7 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get all projects
+  @Public()
   @Get()
   findAllProjects(@Query() queryProjectDto: QueryProjectDto) {
     return this.projectsService.findAll(queryProjectDto);
@@ -100,14 +102,17 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get all featured projects
+  @Public()
   @Get('featured')
   findFeaturedProjects(@Query('limit') limit?: string) {
-    const limitNum = limit ? parseInt(limit, 10) : 10;
+    // max 3 projects
+    const limitNum = limit ? parseInt(limit, 10) : 3;
     return this.projectsService.findFeatured(limitNum);
   }
 
   // @Accessible by All
   // @Description Get all latest projects
+  @Public()
   @Get('latest')
   findLatestProjects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
@@ -116,6 +121,7 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get all upcoming projects
+  @Public()
   @Get('upcoming')
   findUpcomingProjects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
@@ -124,6 +130,7 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get top 10 projects
+  @Public()
   @Get('top10')
   findTop10Projects(@Query('limit') limit?: string) {
     const limitNum = limit ? parseInt(limit, 10) : 10;
@@ -132,6 +139,7 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get Projects by location
+  @Public()
   @Get('location')
   findProjectByLocation(
     @Query('location') location: string,
@@ -164,6 +172,7 @@ export class ProjectsController {
 
   // @Accessible by All
   // @Description Get project by id
+  @Public()
   @Get(':id')
   findOneProject(@Param() params: MongoIdDto) {
     return this.projectsService.findOne(params.id);

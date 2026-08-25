@@ -237,38 +237,32 @@ export class ProjectsService {
       throw new BadRequestException('Project not found');
     }
     await project.populate([
-      { path: 'developer', select: 'name logoUrl' },
+      { path: 'developer', select: 'name _id' },
       {
         path: 'episodes',
-        select: 'title thumbnail episodeUrl duration episodeOrder',
+        select: '_id title thumbnail episodeUrl duration episodeOrder',
       },
-      { path: 'reels', select: 'videoUrl thumbnail title' },
-      { path: 'inventory', select: 'title inventoryUrl' },
-      { path: 'pdf', select: 'title pdfUrl' },
+      { path: 'reels', select: '_id title thumbnail videoUrl' },
+      { path: 'inventory', select: '_id title inventoryUrl' },
+      { path: 'pdf', select: '_id title pdfUrl' },
     ]);
     await this.incrementViewCount(id);
     return project;
   }
 
   // Find Featured Projects
-  async findFeatured(limit: number = 10) {
-    const projects = await this.projectModel
+  async findFeatured(limit: number = 3) {
+    return this.projectModel
       .find({ deletedAt: null, featured: true })
-      .select('_id title location status developer slug heroVideoUrl logoUrl')
+      .select(
+        '_id title location status developer slug heroVideoUrl logoUrl published',
+      )
       .limit(limit)
       .exec()
       .catch((error) => {
         throw new BadRequestException(error.message);
       });
 
-    return projects.map((project) => ({
-      _id: project._id,
-      title: project.title,
-      location: project.location,
-      ad_url: project.heroVideoUrl,
-      adUrl: project.heroVideoUrl,
-      heroVideoUrl: project.heroVideoUrl,
-    }));
   }
 
   // Find Latest Projects except upcoming projects

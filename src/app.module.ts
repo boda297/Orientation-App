@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
@@ -16,6 +16,7 @@ import { NewsModule } from './news/news.module';
 import { WatchHistoryModule } from './watch-history/watch-history.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { HTTPLoggerMiddleware } from './common/middleware/http-logger.middleware';
 
 @Module({
   imports: [
@@ -57,4 +58,9 @@ import { SubscriptionModule } from './subscription/subscription.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(HTTPLoggerMiddleware).forRoutes('*');
+  }
+}
+

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -22,6 +23,7 @@ export class WatchHistoryController {
   constructor(private readonly watchHistoryService: WatchHistoryService) {}
 
   @Post('progress')
+  @Put('progress')
   @HttpCode(HttpStatus.OK)
   async updateProgress(
     @CurrentUser('sub') userId: string,
@@ -44,11 +46,12 @@ export class WatchHistoryController {
       limit ? parseInt(limit, 10) : 10,
     );
     return {
-      message: 'Continue watching list fetched successfully',
-      items,
+      message: 'Continue watching fetched',
       count,
+      items,
     };
   }
+
 
   @Get()
   async getAllHistory(
