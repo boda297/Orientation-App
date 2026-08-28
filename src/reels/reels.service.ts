@@ -13,6 +13,7 @@ import { S3Service } from 'src/s3/s3.service';
 import { ProjectsService } from 'src/projects/projects.service';
 import { DeveloperService } from 'src/developer/developer.service';
 import { UsersService } from 'src/users/users.service';
+import { SubscriptionsService } from 'src/subscription/subscription.service';
 
 @Injectable()
 export class ReelsService {
@@ -23,6 +24,7 @@ export class ReelsService {
     private readonly developerService: DeveloperService,
     private readonly usersService: UsersService,
     private readonly s3Service: S3Service,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /*
@@ -92,7 +94,7 @@ export class ReelsService {
   }
 
   // Find one reel by ID
-  async findOneReel(id: Types.ObjectId) {
+  async findOneReel(id: Types.ObjectId, userId?: string) {
     const reel = await this.reelModel
       .findById(id)
       .populate('projectId', 'title slug');
@@ -100,9 +102,17 @@ export class ReelsService {
       throw new NotFoundException('Reel not found');
     }
     await this.incrementViewCount(id);
+
+    // Content gating: free after FREE_ACCESS_AFTER_DAYS from createdAt
+    const createdAt = (reel as any).createdAt as Date | undefined;
+    const hasAccess = await this.subscriptionsService.canAccessContent(
+      userId,
+      createdAt,
+    );
+
     return {
       message: 'Reel fetched successfully',
-      reel,
+      reel: { ...reel.toObject(), hasAccess },
     };
   }
 

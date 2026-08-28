@@ -12,6 +12,7 @@ import {
   Request,
   UseInterceptors,
   UploadedFiles,
+  Req,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ProjectsService } from './projects.service';
@@ -170,12 +171,13 @@ export class ProjectsController {
     return this.projectsService.findByDeveloper(developer);
   }
 
-  // @Accessible by All
+  // @Accessible by All (authenticated users get hasAccess=true for new content if subscribed)
   // @Description Get project by id
   @Public()
   @Get(':id')
-  findOneProject(@Param() params: MongoIdDto) {
-    return this.projectsService.findOne(params.id);
+  findOneProject(@Param() params: MongoIdDto, @Req() req: any) {
+    const userId: string | undefined = req.user?.sub ?? req.user?.userId;
+    return this.projectsService.findOne(params.id, userId);
   }
 
   // @Accessible by ADMIN and SUPERADMIN

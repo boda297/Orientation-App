@@ -1,90 +1,102 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
-  Patch,
+  HttpCode,
+  HttpStatus,
   Param,
-  Delete,
+  Patch,
+  Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
-import { SubscriptionService } from './subscription.service';
-import { CreateSubscriptionDto } from './dto/create-subscription.dto';
-import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
-import {
-  CreateSubscriptionPlanInput,
-  PaymobBillingData,
-} from './paymob.service';
+import { SubscriptionsService } from './subscription.service';
+import { SubscribeDto } from './dto/subscribe.dto';
+import { QuerySubscriptionDto } from './dto/query-subscription.dto';
+import { GrantSubscriptionDto } from './dto/grant-subscription.dto';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from 'src/auth/enum/roles.enum';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import { MongoIdDto } from 'src/common/mongoId.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 
-@Controller('subscription')
-export class SubscriptionController {
-  constructor(private readonly subscriptionService: SubscriptionService) {}
+@Controller('subscriptions')
+export class SubscriptionsController {
+  constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  @Public()
-  @Post('paymob/plan')
-  createPlan(@Body() planData: CreateSubscriptionPlanInput) {
-    return this.subscriptionService.createPlan(planData);
-  }
-
-  @Public()
-  @Get('paymob/plans')
-  getPlans() {
-    return this.subscriptionService.getPlans();
-  }
-
-  @Public()
-  @Post('paymob/checkout')
-  initiateCheckout(
-    @Body()
-    body: {
-      amountCents: number;
-      merchantOrderId?: string;
-      billingData?: PaymobBillingData;
-    },
+  @Post('checkout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  checkout(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: SubscribeDto,
   ) {
-    return this.subscriptionService.initiateCheckout(
-      body.amountCents,
-      body.merchantOrderId,
-      body.billingData,
-    );
+    return this.subscriptionsService.initiateCheckout(userId, dto.planId);
   }
 
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  me(@CurrentUser('sub') userId: string) {
+    return this.subscriptionsService.getMySubscription(userId);
+  }
+
+  @Patch('cancel')
+  @UseGuards(JwtAuthGuard)
+  cancel(@CurrentUser('sub') userId: string) {
+    return this.subscriptionsService.cancelSubscription(userId);
+  }
+
+  @Patch('reactivate')
+  @UseGuards(JwtAuthGuard)
+  reactivate(@CurrentUser('sub') userId: string) {
+    return this.subscriptionsService.reactivateSubscription(userId);
+  }
+
+  // Paymob's server-to-server callback — intentionally unauthenticated.
+  // Integrity comes solely from HMAC verification inside the service.
   @Public()
-  @Post('paymob/webhook')
-  handleWebhook(@Body() payload: any, @Query('hmac') hmacQuery: string) {
-    const isValid = this.subscriptionService.verifyWebhookHmac(
-      payload,
-      hmacQuery,
-    );
-    return { success: true, hmacValid: isValid };
+  @Post('webhook')
+  @HttpCode(HttpStatus.OK)
+  webhook(@Body() body: any, @Query('hmac') hmac: string) {
+    return this.subscriptionsService.handleWebhook(body, hmac);
   }
 
-  @Post()
-  create(@Body() createSubscriptionDto: CreateSubscriptionDto) {
-    return this.subscriptionService.create(createSubscriptionDto);
-  }
+  // ── Admin ──
 
+  // Admin endpoint to get all subscriptions.
   @Get()
-  findAll() {
-    return this.subscriptionService.findAll();
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  findAll(@Query() query: QuerySubscriptionDto) {
+    return this.subscriptionsService.findAllForAdmin(query);
   }
 
+  // Admin endpoint to get a subscription by ID.
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.subscriptionService.findOne(+id);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  findOne(@Param() params: MongoIdDto) {
+    return this.subscriptionsService.findOneForAdmin(params.id.toString());
   }
 
-  @Patch(':id')
-  update(
-    @Param('id') id: string,
-    @Body() updateSubscriptionDto: UpdateSubscriptionDto,
+  // Admin endpoint to force-cancel a subscription.
+  @Patch(':id/force-cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  forceCancel(@Param() params: MongoIdDto) {
+    return this.subscriptionsService.adminForceCancel(params.id.toString());
+  }
+
+  // Admin endpoint to grant a subscription to a user (e.g., for offline payment or testing).
+  @Post('grant')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  grant(
+    @Body() dto: GrantSubscriptionDto,
+    @CurrentUser('sub') adminId: string,
   ) {
-    return this.subscriptionService.update(+id, updateSubscriptionDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.subscriptionService.remove(+id);
+    return this.subscriptionsService.grantSubscription(dto, adminId);
   }
 }

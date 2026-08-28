@@ -11,6 +11,7 @@ import {
   UploadedFiles,
   Request,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EpisodeService } from './episode.service';
@@ -70,8 +71,9 @@ export class EpisodeController {
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  async findOne(@Param() params: MongoIdDto) {
-    return this.episodeService.findOne(params.id);
+  async findOne(@Param() params: MongoIdDto, @Req() req: any) {
+    const userId: string | undefined = req.user?.sub ?? req.user?.userId;
+    return this.episodeService.findOne(params.id, userId);
   }
 
   @Patch(':id')

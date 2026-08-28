@@ -15,6 +15,7 @@ import { FilesModule } from './files/files.module';
 import { NewsModule } from './news/news.module';
 import { WatchHistoryModule } from './watch-history/watch-history.module';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { HTTPLoggerMiddleware } from './common/middleware/http-logger.middleware';
 
@@ -54,6 +55,7 @@ import { HTTPLoggerMiddleware } from './common/middleware/http-logger.middleware
     NewsModule,
     WatchHistoryModule,
     SubscriptionModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

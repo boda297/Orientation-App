@@ -7,6 +7,7 @@ import { S3Module } from 'src/s3/s3.module';
 import { ProjectsModule } from 'src/projects/projects.module';
 import { DeveloperModule } from 'src/developer/developer.module';
 import { UsersModule } from 'src/users/users.module';
+import { SubscriptionModule } from 'src/subscription/subscription.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from 'src/users/users.module';
     DeveloperModule,
     UsersModule,
     S3Module,
+    SubscriptionModule,
   ],
   controllers: [ReelsController],
   providers: [ReelsService],

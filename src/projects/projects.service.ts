@@ -17,6 +17,7 @@ import { UsersService } from 'src/users/users.service';
 import { EpisodeService } from 'src/episode/episode.service';
 import { ReelsService } from 'src/reels/reels.service';
 import { FilesService } from 'src/files/files.service';
+import { SubscriptionsService } from 'src/subscription/subscription.service';
 
 @Injectable()
 export class ProjectsService {
@@ -30,6 +31,7 @@ export class ProjectsService {
     private readonly reelsService: ReelsService,
     private readonly filesService: FilesService,
     private readonly s3Service: S3Service,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /*
@@ -231,7 +233,7 @@ export class ProjectsService {
   }
 
   // Find One Project
-  async findOne(id: Types.ObjectId) {
+  async findOne(id: Types.ObjectId, userId?: string) {
     const project = await this.projectModel.findById(id);
     if (!project) {
       throw new BadRequestException('Project not found');
@@ -247,7 +249,14 @@ export class ProjectsService {
       { path: 'pdf', select: '_id title pdfUrl' },
     ]);
     await this.incrementViewCount(id);
-    return project;
+
+    // Content gating: free after FREE_ACCESS_AFTER_DAYS, otherwise requires subscription
+    const hasAccess = await this.subscriptionsService.canAccessContent(
+      userId,
+      project.publishedAt,
+    );
+
+    return { ...project.toObject(), hasAccess };
   }
 
   // Find Featured Projects

@@ -12,6 +12,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { ProjectsService } from 'src/projects/projects.service';
 import { S3Service } from 'src/s3/s3.service';
+import { SubscriptionsService } from 'src/subscription/subscription.service';
 
 @Injectable()
 export class EpisodeService {
@@ -22,6 +23,7 @@ export class EpisodeService {
     @Inject(forwardRef(() => ProjectsService))
     private readonly projectsService: ProjectsService,
     private readonly s3Service: S3Service,
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /*
@@ -95,7 +97,7 @@ export class EpisodeService {
   }
 
   // Find one episode by ID
-  async findOne(id: Types.ObjectId) {
+  async findOne(id: Types.ObjectId, userId?: string) {
     const episode = await this.episodeModel
       .findById(id)
       .populate('projectId', 'title slug');
@@ -104,7 +106,14 @@ export class EpisodeService {
       throw new NotFoundException('Episode not found');
     }
 
-    return episode;
+    // Content gating: free after FREE_ACCESS_AFTER_DAYS from createdAt
+    const createdAt = (episode as any).createdAt as Date | undefined;
+    const hasAccess = await this.subscriptionsService.canAccessContent(
+      userId,
+      createdAt,
+    );
+
+    return { ...episode.toObject(), hasAccess };
   }
 
   // Update episode details and replace files on S3 if provided

@@ -10,6 +10,7 @@ import { ReelsModule } from 'src/reels/reels.module';
 import { FilesModule } from 'src/files/files.module';
 import { AuthModule } from 'src/auth/auth.module';
 import { S3Module } from 'src/s3/s3.module';
+import { SubscriptionModule } from 'src/subscription/subscription.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { S3Module } from 'src/s3/s3.module';
     FilesModule,
     AuthModule,
     S3Module,
+    SubscriptionModule,
   ],
   controllers: [ProjectsController],
   providers: [ProjectsService],

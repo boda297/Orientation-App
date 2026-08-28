@@ -20,6 +20,7 @@ import { RolesGuard } from 'src/auth/guards/roles.guard';
 import { Role } from 'src/auth/enum/roles.enum';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { MongoIdDto } from 'src/common/mongoId.dto';
+import { Public } from 'src/auth/decorators/public.decorator';
 import {
   FileFieldsInterceptor,
   FileInterceptor,
@@ -77,10 +78,14 @@ export class ReelsController {
     return this.reelsService.getSavedReelsByUser(req.user.sub);
   }
 
+  // Public — guests get hasAccess:false for new reels, subscribers get hasAccess:true
+  @Public()
   @Get(':id')
-  findOneReel(@Param() params: MongoIdDto) {
-    return this.reelsService.findOneReel(params.id);
+  findOneReel(@Param() params: MongoIdDto, @Req() req: any) {
+    const userId: string | undefined = req.user?.sub ?? req.user?.userId;
+    return this.reelsService.findOneReel(params.id, userId);
   }
+
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
