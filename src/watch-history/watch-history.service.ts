@@ -17,29 +17,39 @@ export class WatchHistoryService {
   private calculateProgress(currentTime: number, duration: number): number {
     if (!duration || duration <= 0) return 0;
     const clamped = Math.min(Math.max(currentTime, 0), duration);
-    const pct = Math.floor((clamped / duration) * 100);
+    const pct = Math.round((clamped / duration) * 100);
     return Math.min(Math.max(pct, 0), 100);
   }
 
   async upsertProgress(userId: Types.ObjectId, dto: UpdateWatchProgressDto) {
-    const currentTime = Math.min(Math.max(dto.currentTime, 0), dto.duration);
-    const progressPercentage = this.calculateProgress(currentTime, dto.duration);
-    const completed = progressPercentage >= 90;
+    const currentTime = Math.min(Math.max(dto.currentTime, 0), dto.duration || 0);
+    const progressPercentage = this.calculateProgress(
+      currentTime,
+      dto.duration,
+    );
+    const completed = progressPercentage >= 95;
     const lastWatchedAt = new Date();
+
+    const projectId = Types.ObjectId.isValid(dto.projectId)
+      ? new Types.ObjectId(dto.projectId)
+      : dto.projectId;
 
     const watchHistory = await this.watchHistoryModel.findOneAndUpdate(
       { userId, contentId: dto.contentId },
       {
         userId,
+        projectId,
+        projectTitle: dto.projectTitle,
         contentId: dto.contentId,
         contentTitle: dto.contentTitle,
         contentThumbnail: dto.contentThumbnail,
+        episodeUrl: dto.episodeUrl,
         currentTime,
         duration: dto.duration,
         progressPercentage,
         completed,
         lastWatchedAt,
-        contentType: dto.contentType,
+        contentType: dto.contentType || 'episode',
         season: dto.season,
         episode: dto.episode,
       },
@@ -61,9 +71,9 @@ export class WatchHistoryService {
       .find({
         userId,
         completed: false,
-        progressPercentage: { $gt: 0, $lt: 90 },
+        progressPercentage: { $lt: 95 },
       })
-      .sort({ lastWatchedAt: -1 })
+      .sort({ updatedAt: -1, lastWatchedAt: -1 })
       .limit(safeLimit);
 
     return { items, count: items.length };
@@ -82,7 +92,7 @@ export class WatchHistoryService {
 
     const items = await this.watchHistoryModel
       .find(filter)
-      .sort({ lastWatchedAt: -1 })
+      .sort({ updatedAt: -1, lastWatchedAt: -1 })
       .limit(safeLimit);
 
     return { items, count: items.length };
@@ -94,7 +104,7 @@ export class WatchHistoryService {
 
     const items = await this.watchHistoryModel
       .find({ userId, lastWatchedAt: { $gte: since } })
-      .sort({ lastWatchedAt: -1 })
+      .sort({ updatedAt: -1, lastWatchedAt: -1 })
       .limit(safeLimit);
 
     return { items, count: items.length };
@@ -105,14 +115,20 @@ export class WatchHistoryService {
   }
 
   async markCompleted(userId: Types.ObjectId, contentId: string) {
-    const watchHistory = await this.watchHistoryModel.findOne({ userId, contentId });
+    const watchHistory = await this.watchHistoryModel.findOne({
+      userId,
+      contentId,
+    });
     if (!watchHistory) {
       throw new NotFoundException('Watch history not found for this content');
     }
 
     watchHistory.completed = true;
     watchHistory.progressPercentage = 100;
-    if (typeof watchHistory.duration === 'number' && watchHistory.duration > 0) {
+    if (
+      typeof watchHistory.duration === 'number' &&
+      watchHistory.duration > 0
+    ) {
       watchHistory.currentTime = watchHistory.duration;
     }
     watchHistory.lastWatchedAt = new Date();
@@ -122,7 +138,10 @@ export class WatchHistoryService {
   }
 
   async removeContent(userId: Types.ObjectId, contentId: string) {
-    const result = await this.watchHistoryModel.deleteOne({ userId, contentId });
+    const result = await this.watchHistoryModel.deleteOne({
+      userId,
+      contentId,
+    });
     if (!result.deletedCount) {
       throw new NotFoundException('Watch history not found for this content');
     }

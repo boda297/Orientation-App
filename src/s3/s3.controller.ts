@@ -1,69 +1,83 @@
 import {
   Controller,
   Post,
-  Delete,
   UseInterceptors,
   UploadedFile,
   Body,
-  Param,
   BadRequestException,
   HttpCode,
   HttpStatus,
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  UseGuards,
+  Delete,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { S3Service } from './s3.service';
+import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
+import { Role } from 'src/auth/enum/roles.enum';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
 
 @Controller('upload')
 export class S3Controller {
   constructor(private readonly s3Service: S3Service) {}
 
-  @Post()
+  /**
+   * POST /upload/inventory
+   * Uploads an inventory document (Excel sheets, CSV, Google Slides / PowerPoint presentations, etc.) to AWS S3.
+   * Allowed file types: xls, xlsx, xlsm, xlsb, csv, tsv, ods, ppt, pptx, odp, gslides, gsheet, pdf (Max size: 100MB).
+   * Access: ADMIN, SUPERADMIN
+   */
+  @Post('inventory')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
-  async uploadFile(
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  async uploadInventory(
     @UploadedFile(
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 100 * 1024 * 1024 }), // 100MB
           new FileTypeValidator({
-            fileType: /(jpg|jpeg|png|gif|pdf|mp4|mov|avi|mp3|wav)$/,
+            fileType:
+              /(xls|xlsx|xlsm|xlsb|gsheet|ms-excel|openxmlformats|spreadsheet)/i,
           }),
         ],
         fileIsRequired: true,
       }),
     )
     file: Express.Multer.File,
-    @Body('folder') folder?: 'episodes' | 'reels' | 'images' | 'PDF',
   ) {
-    // Default to 'images' if no folder specified
-    const targetFolder = folder || 'images';
-
-    // Validate folder
-    const validFolders = ['episodes', 'reels', 'images', 'PDF'];
-    if (!validFolders.includes(targetFolder)) {
+    const validExtensions = ['xls', 'xlsx', 'xlsm', 'xlsb', 'gsheet'];
+    const fileExtension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!fileExtension || !validExtensions.includes(fileExtension)) {
       throw new BadRequestException(
-        `Invalid folder. Must be one of: ${validFolders.join(', ')}`,
+        `Invalid file extension. Allowed extensions: ${validExtensions.join(', ')}`,
       );
     }
 
-    const result = await this.s3Service.uploadFile(
-      file,
-      targetFolder as 'episodes' | 'reels' | 'images' | 'PDF',
-    );
+    const result = await this.s3Service.uploadFile(file, 'inventory');
 
     return {
       success: true,
-      message: 'File uploaded successfully',
+      message: 'Inventory file uploaded successfully',
       data: result,
     };
   }
 
+  /**
+   * POST /upload/episode
+   * Uploads an episode video file to AWS S3 in the 'episodes' folder.
+   * Allowed file types: mp4, mov, avi, mkv (Max size: 500MB).
+   * Access: ADMIN, SUPERADMIN
+   */
   @Post('episode')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
   async uploadEpisode(
     @UploadedFile(
       new ParseFilePipe({
@@ -85,9 +99,17 @@ export class S3Controller {
     };
   }
 
+  /**
+   * POST /upload/reel
+   * Uploads a short video reel file to AWS S3 in the 'reels' folder.
+   * Allowed file types: mp4, mov (Max size: 100MB).
+   * Access: ADMIN, SUPERADMIN
+   */
   @Post('reel')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
   async uploadReel(
     @UploadedFile(
       new ParseFilePipe({
@@ -109,15 +131,23 @@ export class S3Controller {
     };
   }
 
+  /**
+   * POST /upload/image
+   * Uploads an image file to AWS S3 in the 'images' folder.
+   * Allowed file types: jpg, jpeg, png, webp (Max size: 10MB).
+   * Access: ADMIN, SUPERADMIN
+   */
   @Post('image')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
   async uploadImage(
     @UploadedFile(
       new ParseFilePipe({
         validators: [
           new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB
-          new FileTypeValidator({ fileType: /(jpg|jpeg|png|gif|webp)$/ }),
+          new FileTypeValidator({ fileType: /(jpg|jpeg|png|webp)$/ }),
         ],
         fileIsRequired: true,
       }),
@@ -133,9 +163,17 @@ export class S3Controller {
     };
   }
 
+  /**
+   * POST /upload/pdf
+   * Uploads a PDF document to AWS S3 in the 'PDF' folder.
+   * Allowed file types: pdf (Max size: 20MB).
+   * Access: ADMIN, SUPERADMIN
+   */
   @Post('pdf')
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
   async uploadPDF(
     @UploadedFile(
       new ParseFilePipe({
@@ -157,5 +195,24 @@ export class S3Controller {
     };
   }
 
-  
+  /**
+   * DELETE /upload
+   * Deletes a file from AWS S3.
+   * @param key - The key of the file to delete.
+   * Access: ADMIN, SUPERADMIN
+   */
+  @Delete()
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  async deleteFile(@Body('key') key: string) {
+    if (!key) {
+      throw new BadRequestException('Key is required');
+    }
+    await this.s3Service.deleteFile(key);
+    return {
+      success: true,
+      message: 'File deleted successfully',
+    };
+  }
 }

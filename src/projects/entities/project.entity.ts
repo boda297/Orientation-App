@@ -75,6 +75,8 @@ export class Project {
 export const ProjectSchema = SchemaFactory.createForClass(Project);
 
 // Single field indexes
+ProjectSchema.index({ title: 1 }, { collation: { locale: 'en', strength: 2 } });
+ProjectSchema.index({ title: 'text', location: 'text', script: 'text' });
 ProjectSchema.index({ developerId: 1 }); // Filter by developer
 
 // Compound indexes following ESR rule (Equality, Sort, Range)

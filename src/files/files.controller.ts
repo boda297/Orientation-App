@@ -17,17 +17,21 @@ import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { UpdatePdfDto } from './dto/update-pdf.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import { Roles } from 'src/roles/roles.decorator';
-import { Role } from 'src/roles/roles.enum';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from 'src/auth/enum/roles.enum';
 import { MongoIdDto } from 'src/common/mongoId.dto';
-import { RolesGuard } from 'src/roles/roles.guard';
+import { RolesGuard } from 'src/auth/guards/roles.guard';
+import {
+  PdfMagicByteValidationPipe,
+  InventoryMagicByteValidationPipe,
+} from 'src/common/pipes/magic-byte-validation.pipe';
 
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
 
   /**
-   *  Inevtory Module Routes
+   *  Inventory Module Routes
    */
 
   @Post('upload/inventory')
@@ -36,7 +40,7 @@ export class FilesController {
   @UseInterceptors(FileInterceptor('inventory'))
   uploadFile(
     @Body() createInventoryDto: CreateInventoryDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(InventoryMagicByteValidationPipe) file: Express.Multer.File,
   ) {
     return this.filesService.uploadInventory(createInventoryDto, file);
   }
@@ -67,7 +71,8 @@ export class FilesController {
   updateInventory(
     @Param() params: MongoIdDto,
     @Body() updateInventoryDto: UpdateInventoryDto,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFile(InventoryMagicByteValidationPipe)
+    file?: Express.Multer.File,
   ) {
     return this.filesService.updateInventory(
       params.id,
@@ -77,7 +82,9 @@ export class FilesController {
   }
 
   /**
+   *
    * PDF Module Routes
+   *
    */
   @Post('upload/pdf')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -85,7 +92,7 @@ export class FilesController {
   @UseInterceptors(FileInterceptor('PDF'))
   uploadPDF(
     @Body() createPdfDto: CreatePdfDto,
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile(PdfMagicByteValidationPipe) file: Express.Multer.File,
   ) {
     return this.filesService.uploadPDF(createPdfDto, file ? [file] : []);
   }
@@ -109,7 +116,7 @@ export class FilesController {
   updatePDF(
     @Param() params: MongoIdDto,
     @Body() updatePdfDto: UpdatePdfDto,
-    @UploadedFile() file?: Express.Multer.File,
+    @UploadedFile(PdfMagicByteValidationPipe) file?: Express.Multer.File,
   ) {
     return this.filesService.updatePDF(params.id, updatePdfDto, file);
   }

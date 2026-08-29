@@ -11,6 +11,7 @@ import {
   UploadedFiles,
   Request,
   BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { EpisodeService } from './episode.service';
@@ -18,9 +19,9 @@ import { CreateEpisodeDto } from './dto/create-episode.dto';
 import { UpdateEpisodeDto } from './dto/update-episode.dto';
 import { MongoIdDto } from '../common/mongoId.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../roles/roles.guard';
-import { Roles } from '../roles/roles.decorator';
-import { Role } from '../roles/roles.enum';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from 'src/auth/decorators/roles.decorator';
+import { Role } from '../auth/enum/roles.enum';
 
 @Controller('episode')
 export class EpisodeController {
@@ -37,7 +38,7 @@ export class EpisodeController {
       ],
       {
         limits: {
-          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+          fileSize: 1 * 1024 * 1024 * 1024, // 1GB max
         },
       },
     ),
@@ -69,8 +70,10 @@ export class EpisodeController {
   }
 
   @Get(':id')
-  async findOne(@Param() params: MongoIdDto) {
-    return this.episodeService.findOne(params.id);
+  @UseGuards(JwtAuthGuard)
+  async findOne(@Param() params: MongoIdDto, @Req() req: any) {
+    const userId: string | undefined = req.user?.sub ?? req.user?.userId;
+    return this.episodeService.findOne(params.id, userId);
   }
 
   @Patch(':id')
@@ -84,7 +87,7 @@ export class EpisodeController {
       ],
       {
         limits: {
-          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
+          fileSize: 1 * 1024 * 1024 * 1024, // 1GB max
         },
       },
     ),

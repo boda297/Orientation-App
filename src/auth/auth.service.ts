@@ -1,110 +1,145 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { UsersService } from 'src/users/users.service';
 import { EmailService } from 'src/email/email.service';
 import { OtpService } from './services/otp.service';
-import { TokenService } from './services/token.service';
-import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import * as bcrypt from 'bcrypt';
-import { normalizeEmail } from './utils/normalize-email';
+import { JwtService } from '@nestjs/jwt';
+import refreshJwtConfig from './config/refresh-jwt.config';
+import { ConfigType } from '@nestjs/config';
+import { Types } from 'mongoose';
+import { AuthJwtPayload } from './types/auth-jwtPayload';
+import * as argon2 from 'argon2';
+import googleOauthConfig from './config/google-oauth.config';
+import appleOauthConfig from './config/apple-oauth.config';
+import { OAuth2Client } from 'google-auth-library';
+import appleSignin from 'apple-signin-auth';
+import { AppleMobileDto } from './dto/apple-mobile.dto';
 
 @Injectable()
 export class AuthService {
+  private googleOAuthClient: OAuth2Client;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly emailService: EmailService,
     private readonly otpService: OtpService,
-    private readonly tokenService: TokenService,
-  ) {}
+    private jwtService: JwtService,
+    @Inject(refreshJwtConfig.KEY)
+    private refreshJwtConfiguration: ConfigType<typeof refreshJwtConfig>,
+    @Inject(googleOauthConfig.KEY)
+    private googleConfiguration: ConfigType<typeof googleOauthConfig>,
+    @Inject(appleOauthConfig.KEY)
+    private appleConfiguration: ConfigType<typeof appleOauthConfig>,
+  ) {
+    this.googleOAuthClient = new OAuth2Client();
+  }
 
-  /**
-   * Login user and return access + refresh tokens
-   */
-  async login(loginDto: LoginDto, deviceInfo?: string, ipAddress?: string) {
-    const email = normalizeEmail(loginDto.email);
+  // Validate user credentials
+  async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
-    if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+    if (!user) throw new UnauthorizedException('Invalid credentials');
 
     if (!user.password) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      user.password,
-    );
-
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Check if email is verified
-    if (!user.isEmailVerified) {
       throw new UnauthorizedException(
-        'Please verify your email before logging in',
+        'This account was registered using Google. Please log in with Google or reset your password to create one.',
       );
     }
 
-    const userPayload = {
-      sub: user._id.toString(),
-      email: user.email,
-      role: user.role,
-    };
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
+    if (!isPasswordMatch)
+      throw new UnauthorizedException('Invalid credentials');
 
-    const accessToken = this.tokenService.generateAccessToken(userPayload);
-    const refreshToken = this.tokenService.generateRefreshToken(userPayload);
-
-    // Store refresh token in database
-    await this.tokenService.storeRefreshToken(
-      user._id.toString(),
-      refreshToken,
-      deviceInfo,
-      ipAddress,
-    );
-
-    // Exclude password and OTP fields from response
-    const {
-      password,
-      emailVerificationOTP,
-      emailVerificationOTPExpires,
-      passwordResetOTP,
-      passwordResetOTPExpires,
-      ...userWithoutSensitiveData
-    } = user.toObject();
-
-    return {
-      user: userWithoutSensitiveData,
-      accessToken,
-      refreshToken,
-    };
+    return { id: user._id, role: user.role };
   }
 
-  /**
-   * Register new user and send verification OTP
-   */
+  // Login user and return access + refresh tokens
+  async login(userId: Types.ObjectId, role?: string) {
+    const { accessToken, refreshToken } = await this.generateTokens(
+      userId,
+      role,
+    );
+    // hash refresh token
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    // store hashed refresh token in user document
+    await this.usersService.updateHashedRefreshToken(
+      userId,
+      hashedRefreshToken,
+    );
+    return { id: userId, accessToken, refreshToken };
+  }
+
+  // Generate access and refresh tokens
+  async generateTokens(userId: Types.ObjectId, role?: string) {
+    // 1. create payload with user id and role
+    const payload: AuthJwtPayload = { sub: userId, role: role };
+    // 2. generate access and refresh tokens
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwtService.signAsync(payload),
+      this.jwtService.signAsync(payload, this.refreshJwtConfiguration),
+    ]);
+
+    return { accessToken, refreshToken };
+  }
+
+  // Validate refresh token
+  async validateRefreshToken(userId: Types.ObjectId, refreshToken: string) {
+    // 1. Find user by id
+    const user = await this.usersService.findById(userId);
+    if (!user || !user.hashedRefreshToken)
+      throw new UnauthorizedException('Invalid Refresh Token');
+    // 2. Verify refresh token
+    const isRefreshTokenMatch = await argon2.verify(
+      user.hashedRefreshToken,
+      refreshToken,
+    );
+
+    if (!isRefreshTokenMatch)
+      throw new UnauthorizedException('Invalid Refresh Token');
+    return { sub: user._id, role: user.role };
+  }
+
+  // refreshtoken
+  async refreshToken(userId: Types.ObjectId, role?: string) {
+    const { accessToken, refreshToken } = await this.generateTokens(
+      userId,
+      role,
+    );
+    // hash refresh token
+    const hashedRefreshToken = await argon2.hash(refreshToken);
+    // store hashed refresh token in user document
+    await this.usersService.updateHashedRefreshToken(
+      userId,
+      hashedRefreshToken,
+    );
+    return { id: userId, accessToken, refreshToken };
+  }
+
+  // Register new user and send verification OTP
   async register(registerDto: RegisterDto) {
-    const email = normalizeEmail(registerDto.email);
+    const email = registerDto.email;
     const userExists = await this.usersService.findByEmail(email);
-    
-    // If user exists and email is already verified, throw error
+
+    // 1. If user exists and email is already verified, throw error
     if (userExists && userExists.isEmailVerified) {
       throw new ConflictException('Email already registered');
     }
 
-    // Generate OTP using OTP service
+    // 2. Generate OTP using OTP service
     const otp = this.otpService.generateOTP();
     const otpExpires = this.otpService.getOtpExpiryDate();
 
+    // 3. Hash password
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
 
-    // If user exists but email is not verified, update their info and resend OTP
+    // 4. If user exists but email is not verified, update their info and resend OTP
     if (userExists && !userExists.isEmailVerified) {
       // Update user with new registration data
       await this.usersService.update(userExists._id, {
@@ -113,13 +148,13 @@ export class AuthService {
         phoneNumber: registerDto.phoneNumber,
       });
 
-      // Update OTP
+      // 5. Update OTP
       await this.usersService.updateOTP(userExists._id.toString(), {
         emailVerificationOTP: otp,
         emailVerificationOTPExpires: otpExpires,
       });
 
-      // Send OTP email
+      // 6. Send OTP email
       await this.emailService.sendVerificationOTP(email, otp);
 
       return {
@@ -130,20 +165,20 @@ export class AuthService {
       };
     }
 
-    // Create new user
+    // 7. Create new user
     const newUser = await this.usersService.create({
       ...registerDto,
       email,
       password: hashedPassword,
     });
 
-    // Save OTP to user
+    // 8. Save OTP to user
     await this.usersService.updateOTP(newUser.user._id.toString(), {
       emailVerificationOTP: otp,
       emailVerificationOTPExpires: otpExpires,
     });
 
-    // Send OTP email
+    // 9. Send OTP email
     await this.emailService.sendVerificationOTP(email, otp);
 
     return {
@@ -154,12 +189,9 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verify email with OTP
-   */
+  // Verify email with OTP
   async verifyEmail(email: string, otp: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -192,12 +224,9 @@ export class AuthService {
     };
   }
 
-  /**
-   * Resend verification OTP
-   */
+  // Resend verification OTP
   async resendVerificationOTP(email: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -216,7 +245,7 @@ export class AuthService {
       emailVerificationOTPExpires: otpExpires,
     });
 
-    await this.emailService.sendVerificationOTP(normalizedEmail, otp);
+    await this.emailService.sendVerificationOTP(email, otp);
 
     return {
       success: true,
@@ -224,12 +253,9 @@ export class AuthService {
     };
   }
 
-  /**
-   * Forgot password - send reset OTP
-   */
+  // Forgot password - send reset OTP
   async forgotPassword(email: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       // Don't reveal if user exists for security
@@ -246,9 +272,10 @@ export class AuthService {
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: otp,
       passwordResetOTPExpires: otpExpires,
+      isPasswordResetVerified: false,
     });
 
-    await this.emailService.sendPasswordResetOTP(normalizedEmail, otp);
+    await this.emailService.sendPasswordResetOTP(email, otp);
 
     return {
       success: true,
@@ -256,12 +283,9 @@ export class AuthService {
     };
   }
 
-  /**
-   * Verify reset OTP (optional - verify before allowing password change)
-   */
+  // Verify reset OTP
   async verifyResetOTP(email: string, otp: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+    const user = await this.usersService.findByEmail(email);
 
     if (!user) {
       throw new BadRequestException('User not found');
@@ -276,131 +300,249 @@ export class AuthService {
     if (!validationResult.valid) {
       throw new BadRequestException(validationResult.error);
     }
+
+    // Mark password reset as verified and clear OTP code
+    await this.usersService.updateOTP(user._id.toString(), {
+      passwordResetOTP: null,
+      isPasswordResetVerified: true,
+    });
 
     return {
       success: true,
-      message: 'OTP verified. You can now reset your password.',
+      message: 'OTP verified successfully. You can now reset your password.',
     };
   }
 
-  /**
-   * Reset password with OTP
-   */
-  async resetPassword(email: string, otp: string, newPassword: string) {
-    const normalizedEmail = normalizeEmail(email);
-    const user = await this.usersService.findByEmail(normalizedEmail);
+  async signout(userId: Types.ObjectId) {
+    await this.usersService.updateHashedRefreshToken(userId, null);
+    return {
+      success: true,
+      message: 'User signed out successfully',
+    };
+  }
 
+  // Reset password after OTP has been verified
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const { email, newPassword } = resetPasswordDto;
+
+    // 1. Find user by email
+    const user = await this.usersService.findByEmail(email);
     if (!user) {
       throw new BadRequestException('User not found');
     }
 
-    const validationResult = this.otpService.validateOtp(
-      otp,
-      user.passwordResetOTP,
-      user.passwordResetOTPExpires,
-    );
-
-    if (!validationResult.valid) {
-      throw new BadRequestException(validationResult.error);
+    // 2. Check if password reset OTP was verified
+    if (!user.isPasswordResetVerified) {
+      throw new BadRequestException(
+        'OTP must be verified before resetting password',
+      );
     }
 
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // 3. Check if expiry has passed
+    if (this.otpService.isOtpExpired(user.passwordResetOTPExpires)) {
+      await this.usersService.updateOTP(user._id.toString(), {
+        isPasswordResetVerified: false,
+        passwordResetOTPExpires: null,
+      });
+      throw new BadRequestException(
+        'Password reset session has expired. Please request a new OTP.',
+      );
+    }
 
-    // Update password and clear OTP
-    await this.usersService.updatePassword(user._id.toString(), hashedPassword);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    // 4. Update user password and clear reset state
+    await this.usersService.updatePassword(
+      user._id.toString(),
+      hashedPassword,
+    );
     await this.usersService.updateOTP(user._id.toString(), {
       passwordResetOTP: null,
       passwordResetOTPExpires: null,
+      isPasswordResetVerified: false,
     });
 
-    // Revoke all refresh tokens for security
-    await this.revokeAllUserTokens(user._id.toString());
+    // 5. Invalidate active refresh tokens to force re-authentication
+    await this.usersService.updateHashedRefreshToken(user._id, null);
 
     return {
       success: true,
-      message: 'Password reset successfully',
+      message: 'Password has been reset successfully',
     };
   }
 
-  /**
-   * Refresh tokens with rotation (single-use refresh tokens)
-   */
-  async refreshTokens(
-    refreshToken: string,
-    deviceInfo?: string,
-    ipAddress?: string,
-  ) {
-    // Verify and check reuse via TokenService
-    const { payload, storedToken } = await this.tokenService.verifyRefreshToken(
-      refreshToken,
-    );
-
-    // Delete the old refresh token (single-use)
-    await this.tokenService.deleteRefreshToken(storedToken._id.toString());
-
-    // Get the user
-    const user = await this.usersService.findById(payload.sub);
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+  async validateGoogleUser(googleUser: {
+    email: string;
+    username: string;
+    googleId?: string;
+  }) {
+    const userExists = await this.usersService.findByEmail(googleUser.email);
+    // If user exists: ensure email is verified and return user document
+    if (userExists) {
+      if (!userExists.isEmailVerified) {
+        await this.usersService.update(userExists._id, {
+          isEmailVerified: true,
+        });
+        userExists.isEmailVerified = true;
+      }
+      return userExists;
     }
 
-    // Generate new tokens
-    const userPayload = {
-      sub: user._id.toString(), // Ensure consistency 'sub' vs 'id'
-      email: user.email,
-      role: user.role,
-    };
-
-    const newAccessToken = this.tokenService.generateAccessToken(userPayload);
-    const newRefreshToken = this.tokenService.generateRefreshToken(userPayload);
-
-    // Store the new refresh token
-    await this.tokenService.storeRefreshToken(
-      user._id.toString(),
-      newRefreshToken,
-      deviceInfo || storedToken.deviceInfo,
-      ipAddress || storedToken.ipAddress,
-    );
-
-    return {
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    };
+    // If user does not exist: create new user without password (pure OAuth)
+    const newUser = await this.usersService.createGoogleUser({
+      email: googleUser.email,
+      username: googleUser.username,
+      provider: 'google',
+      googleId: googleUser.googleId,
+      isEmailVerified: true,
+    });
+    return newUser;
   }
 
-  /**
-   * Logout - revoke the specific refresh token
-   */
-  async logout(refreshToken: string): Promise<{ message: string }> {
-    await this.tokenService.revokeRefreshToken(refreshToken);
-    return { message: 'Logged out successfully' };
+  // Validate Google ID Token from Mobile Apps (Flutter, React Native, iOS, Android)
+  async validateGoogleIdToken(idToken: string) {
+    if (!idToken) {
+      throw new BadRequestException('idToken is required');
+    }
+
+    try {
+      const audiences = [
+        this.googleConfiguration.clientId,
+        this.googleConfiguration.iosClientId,
+        this.googleConfiguration.androidClientId,
+      ].filter((id): id is string => Boolean(id));
+
+      const ticket = await this.googleOAuthClient.verifyIdToken({
+        idToken,
+        audience: audiences.length > 0 ? audiences : undefined,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new UnauthorizedException('Invalid Google ID token payload');
+      }
+
+      const email = payload.email;
+      const username =
+        payload.name ||
+        [payload.given_name, payload.family_name].filter(Boolean).join(' ') ||
+        'Google User';
+      const googleId = payload.sub;
+
+      const user = await this.validateGoogleUser({
+        email,
+        username,
+        googleId,
+      });
+
+      return await this.login(user._id, user.role);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException(
+        `Google token verification failed: ${error.message}`,
+      );
+    }
   }
 
-  /**
-   * Logout from all devices - revoke all refresh tokens for the user
-   */
-  async revokeAllUserTokens(userId: string): Promise<{ message: string }> {
-    await this.tokenService.revokeAllUserTokens(userId);
-    return { message: 'Logged out from all devices successfully' };
+  // Validate or create user from Apple Profile
+  async validateAppleUser(appleUser: {
+    email?: string;
+    username?: string;
+    appleId: string;
+  }) {
+    // 1. Check if user already exists by appleId
+    let user = await this.usersService.findByAppleId(appleUser.appleId);
+    if (user) {
+      return user;
+    }
+
+    // 2. If email is provided, check if user exists by email (account linking)
+    if (appleUser.email) {
+      user = await this.usersService.findByEmail(appleUser.email);
+      if (user) {
+        await this.usersService.update(user._id, {
+          appleId: appleUser.appleId,
+          isEmailVerified: true,
+        });
+        user.appleId = appleUser.appleId;
+        user.isEmailVerified = true;
+        return user;
+      }
+    }
+
+    // 3. If new user, create Apple account
+    const email =
+      appleUser.email || `${appleUser.appleId}@privaterelay.appleid.com`;
+    const username = appleUser.username || 'Apple User';
+
+    const newUser = await this.usersService.createAppleUser({
+      email,
+      username,
+      appleId: appleUser.appleId,
+      isEmailVerified: true,
+    });
+
+    return newUser;
   }
 
-  /**
-   * Get all active sessions for a user
-   */
-  async getActiveSessions(userId: string) {
-    return this.tokenService.getActiveSessions(userId);
-  }
+  // Validate Apple Identity Token from Mobile Apps (Flutter, React Native, iOS)
+  async validateAppleIdToken(appleMobileDto: AppleMobileDto) {
+    if (!appleMobileDto.identityToken) {
+      throw new BadRequestException('identityToken is required');
+    }
 
-  /**
-   * Clean up unverified users with expired OTPs
-   */
-  async cleanupUnverifiedUsers() {
-    const result = await this.usersService.deleteUnverifiedExpiredUsers();
-    return {
-      success: true,
-      message: `Cleaned up ${result.deletedCount} unverified users with expired OTPs`,
-      deletedCount: result.deletedCount,
-    };
+    try {
+      const audiences = [
+        this.appleConfiguration.clientID,
+        this.appleConfiguration.bundleId,
+      ].filter((id): id is string => Boolean(id));
+
+      const { sub: appleId, email } = await appleSignin.verifyIdToken(
+        appleMobileDto.identityToken,
+        {
+          audience: audiences.length > 0 ? audiences : undefined,
+          ignoreExpiration: false,
+        },
+      );
+
+      // Determine user name from mobile payload (sent only on first login)
+      let username = 'Apple User';
+      if (appleMobileDto.name) {
+        username = [
+          appleMobileDto.name.firstName,
+          appleMobileDto.name.lastName,
+        ]
+          .filter(Boolean)
+          .join(' ');
+      } else if (appleMobileDto.firstName || appleMobileDto.lastName) {
+        username = [appleMobileDto.firstName, appleMobileDto.lastName]
+          .filter(Boolean)
+          .join(' ');
+      }
+
+      const userEmail = email || appleMobileDto.email;
+
+      const user = await this.validateAppleUser({
+        email: userEmail,
+        username: username || 'Apple User',
+        appleId,
+      });
+
+      return await this.login(user._id, user.role);
+    } catch (error) {
+      if (
+        error instanceof UnauthorizedException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new UnauthorizedException(
+        `Apple token verification failed: ${error.message}`,
+      );
+    }
   }
 }

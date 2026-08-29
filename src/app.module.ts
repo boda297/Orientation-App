@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -13,12 +14,27 @@ import { ReelsModule } from './reels/reels.module';
 import { FilesModule } from './files/files.module';
 import { NewsModule } from './news/news.module';
 import { WatchHistoryModule } from './watch-history/watch-history.module';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
+import { SubscriptionModule } from './subscription/subscription.module';
+import { HTTPLoggerMiddleware } from './common/middleware/http-logger.middleware';
+
 @Module({
   imports: [
+    // ConfigModule is used to load environment variables from .env file
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
+    // ThrottlerModule is used to prevent brute-force attacks and rate limiting.
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000, // 1 minute
+        limit: 100, // 100 requests per minute
+      },
+    ]),
+    // MongooseModule is used to connect to the MongoDB database
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
@@ -38,8 +54,15 @@ import { WatchHistoryModule } from './watch-history/watch-history.module';
     FilesModule,
     NewsModule,
     WatchHistoryModule,
+    SubscriptionModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(HTTPLoggerMiddleware).forRoutes('*');
+  }
+}
+

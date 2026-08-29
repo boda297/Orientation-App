@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -67,8 +68,8 @@ export class DeveloperService {
     };
   }
 
+  // find all developers except deleted ones
   async findAllDevelopers() {
-    // find all developers except deleted ones
     return await this.developerModel
       .find({ deletedAt: null })
       .then((developers) => {
@@ -82,10 +83,45 @@ export class DeveloperService {
       });
   }
 
-  findOneDeveloper(id: Types.ObjectId) {
-    return this.developerModel.findById(id).populate('projects');
+  // finds one developer by id
+  async findOneDeveloper(id: Types.ObjectId) {
+    const developer = await this.developerModel
+      .findById(id)
+      .populate('projects')
+      .catch((error) => {
+        throw new BadRequestException(`Invalid ID format: ${error.message}`);
+      });
+    if (!developer) {
+      throw new NotFoundException(`Developer with ID ${id} not found`);
+    }
+    return developer;
   }
 
+  // add project to developer's projects array
+  async addProjectToDeveloper(
+    developerId: Types.ObjectId,
+    projectId: Types.ObjectId,
+  ) {
+    return this.developerModel.findByIdAndUpdate(
+      developerId,
+      { $addToSet: { projects: projectId } },
+      { new: true },
+    );
+  }
+
+  // remove project from developer's projects array
+  async removeProjectFromDeveloper(
+    developerId: Types.ObjectId,
+    projectId: Types.ObjectId,
+  ) {
+    return this.developerModel.findByIdAndUpdate(
+      developerId,
+      { $pull: { projects: projectId } },
+      { new: true },
+    );
+  }
+
+  // find projects by developer id
   async findProjectsByDeveloperId(developerId: Types.ObjectId) {
     return this.projectModel
       .find({ developer: developerId, deletedAt: null })
@@ -93,7 +129,7 @@ export class DeveloperService {
       .exec();
   }
 
-  /** Fetch projects by IDs from the developer entity's projects array */
+  // find projects by developer id array
   async findProjectsByIds(projectIds: Types.ObjectId[]) {
     if (!projectIds?.length) return [];
     return this.projectModel
@@ -109,7 +145,7 @@ export class DeveloperService {
     if (!developer) {
       throw new NotFoundException('Developer profile not found for this user');
     }
-    return this.findOneDeveloper(developer._id as Types.ObjectId);
+    return this.findOneDeveloper(developer._id);
   }
 
   async getMyProjects(userId: string) {
@@ -118,7 +154,7 @@ export class DeveloperService {
     if (!developer) {
       throw new NotFoundException('Developer profile not found for this user');
     }
-    const projectIds = (developer.projects ?? []) as Types.ObjectId[];
+    const projectIds = developer.projects ?? [];
     const projects = await this.findProjectsByIds(projectIds);
     return {
       message: 'Projects fetched successfully',
@@ -141,10 +177,7 @@ export class DeveloperService {
     if (!developer) {
       throw new NotFoundException('Developer profile not found for this user');
     }
-    return this.updateDeveloper(
-      developer._id as Types.ObjectId,
-      updateDeveloperDto,
-    );
+    return this.updateDeveloper(developer._id, updateDeveloperDto);
   }
 
   createDeveloperAccount(dto: CreateDeveloperAccountDto) {
@@ -160,10 +193,22 @@ export class DeveloperService {
   }
 
   async findByName(name: string): Promise<DeveloperDoc | null> {
-    return this.developerModel.findOne({
-      name: { $regex: new RegExp(`^${name}$`, 'i') },
-      deletedAt: null,
-    });
+    return this.developerModel
+      .findOne({ name, deletedAt: null })
+      .collation({ locale: 'en', strength: 2 })
+      .exec();
+  }
+
+  /**
+   * Performs high-speed MongoDB $text index search across indexed text fields
+   */
+  async searchDevelopers(query: string) {
+    return this.developerModel
+      .find({
+        $text: { $search: query },
+        deletedAt: null,
+      })
+      .exec();
   }
 
   async createDeveloper(createDeveloperDto: CreateDeveloperDto) {
@@ -198,24 +243,36 @@ export class DeveloperService {
 
   // update developer project script by developer
   async updateDeveloperScript(
-    id: Types.ObjectId,
+    userId: string,
+    projectId: Types.ObjectId,
     updateDeveloperScriptDto: UpdateDeveloperScriptDto,
   ) {
-    return await this.developerModel
-      .findByIdAndUpdate(
-        id,
-        { script: updateDeveloperScriptDto.script },
-        { new: true },
-      )
-      .then((updatedDeveloper) => {
-        return {
-          message: 'Developer project updated successfully',
-          developer: updatedDeveloper,
-        };
-      })
-      .catch((error) => {
-        throw new BadRequestException(error.message);
-      });
+    // Get developer profile for the authenticated user
+    const developer =
+      await this.developerAuthService.getDeveloperByUserId(userId);
+    if (!developer) {
+      throw new NotFoundException('Developer profile not found for this user');
+    }
+
+    // Get the project
+    const project = await this.projectModel.findById(projectId);
+    if (!project || project.deletedAt) {
+      throw new NotFoundException(`Project with ID ${projectId} not found`);
+    }
+
+    // Verify ownership (Check if project belongs to this developer)
+    if (project.developer.toString() !== developer._id.toString()) {
+      throw new ForbiddenException('Unauthorized access to this project');
+    }
+
+    // Update script field only
+    project.script = updateDeveloperScriptDto.script;
+    await project.save();
+
+    return {
+      message: 'Developer project script updated successfully',
+      project,
+    };
   }
 
   // update developer details by admin or superadmin

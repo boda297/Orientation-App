@@ -3,12 +3,19 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   Max,
   Min,
 } from 'class-validator';
 
 export class UpdateWatchProgressDto {
+  @IsString()
+  @IsNotEmpty()
+  projectId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  projectTitle: string;
+
   @IsString()
   @IsNotEmpty()
   contentId: string;
@@ -19,15 +26,18 @@ export class UpdateWatchProgressDto {
 
   @IsOptional()
   @IsString()
-  @IsUrl({}, { message: 'contentThumbnail must be a valid URL' })
   contentThumbnail?: string;
+
+  @IsOptional()
+  @IsString()
+  episodeUrl?: string;
 
   @IsNumber()
   @Min(0)
   currentTime: number;
 
   @IsNumber()
-  @Min(1)
+  @Min(0)
   duration: number;
 
   @IsOptional()

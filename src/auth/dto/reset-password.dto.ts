@@ -13,10 +13,6 @@ export class ResetPasswordDto {
 
   @IsString()
   @IsNotEmpty()
-  otp: string;
-
-  @IsString()
-  @IsNotEmpty()
   @MinLength(8)
   @MaxLength(20)
   newPassword: string;

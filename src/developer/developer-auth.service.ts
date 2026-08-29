@@ -9,8 +9,7 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import { Developer, DeveloperDoc } from './entities/developer.entity';
 import { User, UserDocument } from 'src/users/entities/user.entity';
-import { Role } from 'src/roles/roles.enum';
-import { normalizeEmail } from 'src/auth/utils/normalize-email';
+import { Role } from 'src/auth/enum/roles.enum';
 import { CreateDeveloperAccountDto } from './dto/create-developer-account.dto';
 
 @Injectable()
@@ -152,10 +151,7 @@ export class DeveloperAuthService {
       );
     }
 
-    const normalizedEmail = normalizeEmail(email);
-    const existingUser = await this.userModel
-      .findOne({ email: normalizedEmail })
-      .exec();
+    const existingUser = await this.userModel.findOne({ email }).exec();
     if (existingUser) {
       throw new ConflictException('User with this email already exists');
     }
@@ -163,7 +159,7 @@ export class DeveloperAuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const user = new this.userModel({
       username: developer.name,
-      email: normalizedEmail,
+      email,
       password: hashedPassword,
       phoneNumber: developer.phone ?? undefined,
       role: Role.DEVELOPER,
