@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { Role } from '../auth/enum/roles.enum';
+import { Public } from '../auth/decorators/public.decorator';
 
 @Controller('episode')
 export class EpisodeController {
@@ -29,7 +30,7 @@ export class EpisodeController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.DEVELOPER)
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -38,7 +39,7 @@ export class EpisodeController {
       ],
       {
         limits: {
-          fileSize: 1 * 1024 * 1024 * 1024, // 1GB max
+          fileSize: 5 * 1024 * 1024 * 1024, // 5GB max
         },
       },
     ),
@@ -69,8 +70,8 @@ export class EpisodeController {
     return this.episodeService.findAll();
   }
 
+  @Public()
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
   async findOne(@Param() params: MongoIdDto, @Req() req: any) {
     const userId: string | undefined = req.user?.sub ?? req.user?.userId;
     return this.episodeService.findOne(params.id, userId);

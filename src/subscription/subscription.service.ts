@@ -102,6 +102,16 @@ export class SubscriptionsService {
         status: SubscriptionStatus.PENDING,
         autoRenew: true,
       });
+    } else {
+      // If user retried checkout with a different plan, update the snapshot
+      subscription.planId = plan._id as Types.ObjectId;
+      subscription.planCode = plan.code;
+      subscription.planName = plan.name;
+      subscription.planPriceCentsSnapshot = plan.priceCents;
+      subscription.planVatPercentSnapshot = plan.vatPercent;
+      subscription.planTotalCentsSnapshot = plan.totalCents;
+      subscription.planDurationDaysSnapshot = plan.durationDays;
+      await subscription.save();
     }
 
     const transaction = await this.transactionModel.create({
@@ -459,7 +469,7 @@ export class SubscriptionsService {
     userId: string | undefined,
     releaseDate: Date | undefined,
   ): Promise<boolean> {
-    if (!releaseDate) return true; // no release date → always accessible
+    if (!releaseDate) return this.isUserSubscribed(userId);
     const ageInDays =
       (Date.now() - new Date(releaseDate).getTime()) / 86_400_000;
     if (ageInDays >= this.freeAccessAfterDays) return true; // old enough → free

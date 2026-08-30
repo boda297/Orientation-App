@@ -110,9 +110,15 @@ export class ReelsService {
       createdAt,
     );
 
+    const reelObj: any = reel.toObject();
+    if (!hasAccess) {
+      delete reelObj.videoUrl;
+      delete reelObj.s3Key;
+    }
+
     return {
       message: 'Reel fetched successfully',
-      reel: { ...reel.toObject(), hasAccess },
+      reel: { ...reelObj, hasAccess },
     };
   }
 

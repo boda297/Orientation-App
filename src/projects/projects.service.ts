@@ -251,12 +251,55 @@ export class ProjectsService {
     await this.incrementViewCount(id);
 
     // Content gating: free after FREE_ACCESS_AFTER_DAYS, otherwise requires subscription
+    const releaseDate = project.publishedAt || (project as any).createdAt;
     const hasAccess = await this.subscriptionsService.canAccessContent(
       userId,
-      project.publishedAt,
+      releaseDate,
     );
 
-    return { ...project.toObject(), hasAccess };
+    const projectObj: any = project.toObject();
+
+    if (!hasAccess) {
+      delete projectObj.heroVideoUrl;
+
+      if (projectObj.episodes && Array.isArray(projectObj.episodes)) {
+        projectObj.episodes = projectObj.episodes.map((ep: any) => ({
+          _id: ep._id,
+          title: ep.title,
+          thumbnail: ep.thumbnail,
+          duration: ep.duration,
+          episodeOrder: ep.episodeOrder,
+          locked: true,
+        }));
+      }
+
+      if (projectObj.reels && Array.isArray(projectObj.reels)) {
+        projectObj.reels = projectObj.reels.map((reel: any) => ({
+          _id: reel._id,
+          title: reel.title,
+          thumbnail: reel.thumbnail,
+          locked: true,
+        }));
+      }
+
+      if (projectObj.inventory) {
+        projectObj.inventory = {
+          _id: projectObj.inventory._id,
+          title: projectObj.inventory.title,
+          locked: true,
+        };
+      }
+
+      if (projectObj.pdf && Array.isArray(projectObj.pdf)) {
+        projectObj.pdf = projectObj.pdf.map((file: any) => ({
+          _id: file._id,
+          title: file.title,
+          locked: true,
+        }));
+      }
+    }
+
+    return { ...projectObj, hasAccess };
   }
 
   // Find Featured Projects
