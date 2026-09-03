@@ -53,6 +53,7 @@ export class PaymobService {
   private readonly hmacSecret: string;
   private readonly cardIntegrationId: string;
   private readonly walletIntegrationId?: string;
+  private readonly applePayIntegrationId?: string;
   private readonly motoIntegrationId?: string;
 
   constructor(private readonly configService: ConfigService) {
@@ -66,6 +67,9 @@ export class PaymobService {
     this.walletIntegrationId = this.configService.get<string>(
       'PAYMOB_WALLET_INTEGRATION_ID',
     );
+    this.applePayIntegrationId = this.configService.get<string>(
+      'PAYMOB_APPLE_PAY_INTEGRATION_ID',
+    );
     this.motoIntegrationId = this.configService.get<string>(
       'PAYMOB_MOTO_INTEGRATION_ID',
     );
@@ -78,13 +82,23 @@ export class PaymobService {
   }
 
   getCustomerPaymentMethodIds(): (number | string)[] {
-    return [this.cardIntegrationId, this.walletIntegrationId]
+    return [
+      this.cardIntegrationId,
+      this.walletIntegrationId,
+      this.applePayIntegrationId,
+    ]
       .filter(Boolean)
       .map((id) => (isNaN(Number(id)) ? id! : Number(id)));
   }
 
   getWalletIntegrationIds(): (number | string)[] {
     return [this.walletIntegrationId]
+      .filter(Boolean)
+      .map((id) => (isNaN(Number(id)) ? id! : Number(id)));
+  }
+
+  getApplePayIntegrationIds(): (number | string)[] {
+    return [this.applePayIntegrationId]
       .filter(Boolean)
       .map((id) => (isNaN(Number(id)) ? id! : Number(id)));
   }

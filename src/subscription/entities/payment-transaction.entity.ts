@@ -13,6 +13,10 @@ export enum TransactionStatus {
   PENDING = 'pending',
   SUCCESS = 'success',
   FAILED = 'failed',
+  // Locally voided before any payment was attempted — e.g. superseded by a
+  // plan change during checkout. Webhooks for CANCELLED transactions must be
+  // ignored so a stale Paymob intention cannot activate the subscription.
+  CANCELLED = 'cancelled',
 }
 
 @Schema({ timestamps: true })
@@ -44,6 +48,11 @@ export class PaymentTransaction {
 
   @Prop()
   failureReason?: string;
+
+  // Stored on creation so that repeated checkout clicks can return the same
+  // Paymob unified-checkout URL without creating a new intention each time.
+  @Prop()
+  paymobClientSecret?: string;
 }
 
 export const PaymentTransactionSchema =

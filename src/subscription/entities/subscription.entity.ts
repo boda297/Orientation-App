@@ -102,3 +102,19 @@ export const SubscriptionSchema = SchemaFactory.createForClass(Subscription);
 SubscriptionSchema.index({ userId: 1, status: 1 });
 SubscriptionSchema.index({ status: 1, currentPeriodEnd: 1 });
 SubscriptionSchema.index({ status: 1, nextRetryAt: 1 });
+
+// Unique partial index — enforces at most one non-expired subscription per user
+// at the database level. This is the authoritative concurrency barrier that
+// prevents duplicate active/pending subscriptions regardless of application
+// concurrency or horizontal scaling. EXPIRED subscriptions are excluded so
+// users can freely re-subscribe after their subscription lapses.
+SubscriptionSchema.index(
+  { userId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $in: ['pending', 'active', 'past_due'] },
+    },
+    name: 'unique_active_subscription_per_user',
+  },
+);

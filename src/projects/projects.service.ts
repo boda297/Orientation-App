@@ -347,6 +347,32 @@ export class ProjectsService {
       });
   }
 
+  // Find Free Projects (projects older than FREE_ACCESS_AFTER_DAYS)
+  findFree(limit: number = 10, page: number = 1) {
+    const freeDays = this.subscriptionsService.getFreeAccessAfterDays();
+    const cutoffDate = new Date(Date.now() - freeDays * 86_400_000);
+
+    return this.projectModel
+      .find({
+        deletedAt: null,
+        status: { $ne: 'PLANNING' },
+        $or: [
+          { publishedAt: { $lte: cutoffDate } },
+          { publishedAt: null, createdAt: { $lte: cutoffDate } },
+        ],
+      })
+      .select(
+        '_id title slug status location developer published projectThumbnailUrl createdAt publishedAt',
+      )
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .exec()
+      .catch((error) => {
+        throw new BadRequestException(error.message);
+      });
+  }
+
   // Find Trending Projects
   async findTrending(limit: number = 10) {
     const projects = await this.projectModel
