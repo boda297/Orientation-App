@@ -18,6 +18,8 @@ async function bootstrap() {
   // Trust proxy for accurate IP extraction and rate limiting behind reverse proxies
   app.set('trust proxy', 1);
 
+  app.use('/api/v1/subscriptions/webhook', express.json({ limit: '50kb' }));
+
   // Increase body size limit for large video/file uploads
   app.use(express.json({ limit: '2gb' }));
   app.use(express.urlencoded({ limit: '2gb', extended: true }));

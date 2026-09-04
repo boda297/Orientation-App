@@ -72,38 +72,93 @@ export class SubscriptionsService {
     const user = await this.usersService.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
 
-    let subscription = await this.subscriptionModel.findOne({
+    // ── Fast-path guard ─────────────────────────────────────────────────
+    const activeSubscription = await this.subscriptionModel.findOne({
       userId: new Types.ObjectId(userId),
-      status: {
-        $in: [
-          SubscriptionStatus.PENDING,
-          SubscriptionStatus.ACTIVE,
-          SubscriptionStatus.PAST_DUE,
-        ],
-      },
+      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE] },
     });
-
-    if (subscription && subscription.status !== SubscriptionStatus.PENDING) {
+    if (activeSubscription) {
       throw new BadRequestException(
         'You already have an active subscription. Cancel it before subscribing to a different plan.',
       );
     }
 
-    if (!subscription) {
-      subscription = await this.subscriptionModel.create({
-        userId: new Types.ObjectId(userId),
-        planId: plan._id,
-        planCode: plan.code,
-        planName: plan.name,
-        planPriceCentsSnapshot: plan.priceCents,
-        planVatPercentSnapshot: plan.vatPercent,
-        planTotalCentsSnapshot: plan.totalCents,
-        planDurationDaysSnapshot: plan.durationDays,
-        status: SubscriptionStatus.PENDING,
-        autoRenew: true,
-      });
+    // ── Atomic find-or-create ────────────────────────────────────────────
+    const planSnapshot = {
+      planId: plan._id,
+      planCode: plan.code,
+      planName: plan.name,
+      planPriceCentsSnapshot: plan.priceCents,
+      planVatPercentSnapshot: plan.vatPercent,
+      planTotalCentsSnapshot: plan.totalCents,
+      planDurationDaysSnapshot: plan.durationDays,
+    };
+
+    let subscription: SubscriptionDocument;
+    try {
+      subscription = await this.subscriptionModel.findOneAndUpdate(
+        { userId: new Types.ObjectId(userId), status: SubscriptionStatus.PENDING },
+        {
+          $set: planSnapshot,
+          $setOnInsert: {
+            userId: new Types.ObjectId(userId),
+            status: SubscriptionStatus.PENDING,
+            autoRenew: true,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        // The unique partial index fired: a concurrent request won the insert
+        // race. The document now definitely exists — fetch and update it.
+        const existing = await this.subscriptionModel.findOneAndUpdate(
+          { userId: new Types.ObjectId(userId), status: SubscriptionStatus.PENDING },
+          { $set: planSnapshot },
+          { new: true },
+        );
+        if (!existing) {
+          // Extremely unlikely: the concurrent request may have already been
+          // paid and transitioned out of PENDING by the time we retry.
+          throw new BadRequestException(
+            'Subscription state conflict — please retry in a moment.',
+          );
+        }
+        subscription = existing;
+      } else {
+        throw err;
+      }
     }
 
+    // ── Transaction & Paymob intention (idempotent) ─────────────────────
+    const existingTransaction = await this.transactionModel.findOne({
+      subscriptionId: subscription._id,
+      status: TransactionStatus.PENDING,
+      type: TransactionType.INITIAL,
+    });
+
+    if (
+      existingTransaction &&
+      existingTransaction.amountCents === subscription.planTotalCentsSnapshot &&
+      existingTransaction.paymobClientSecret
+    ) {
+      // Same plan, same amount — reuse the existing checkout session.
+      return {
+        message: 'Checkout initiated',
+        checkoutUrl: this.paymobService.buildUnifiedCheckoutUrl(
+          existingTransaction.paymobClientSecret,
+        ),
+        subscriptionId: subscription._id,
+      };
+    }
+
+    if (existingTransaction) {
+      existingTransaction.status = TransactionStatus.CANCELLED;
+      existingTransaction.failureReason = 'Superseded by plan change at checkout';
+      await existingTransaction.save();
+    }
+
+    // Create a fresh transaction for this checkout session.
     const transaction = await this.transactionModel.create({
       subscriptionId: subscription._id,
       userId: subscription.userId,
@@ -125,6 +180,10 @@ export class SubscriptionsService {
       extras: { subscriptionId: subscription._id.toString(), userId },
     });
 
+    // Persist the clientSecret so future duplicate clicks get the same URL.
+    transaction.paymobClientSecret = clientSecret;
+    await transaction.save();
+
     return {
       message: 'Checkout initiated',
       checkoutUrl: this.paymobService.buildUnifiedCheckoutUrl(clientSecret),
@@ -143,8 +202,23 @@ export class SubscriptionsService {
       throw new ForbiddenException('Invalid signature');
     }
 
-    // special_reference may arrive at top level or nested under `order` —
-    // verify exact field name against your Paymob sandbox logs.
+    // ── Timestamp validation ─────────────────────────────────────────────
+    const createdAtRaw = txObj.created_at;
+    if (createdAtRaw) {
+      const createdAtMs =
+        typeof createdAtRaw === 'number'
+          ? createdAtRaw * 1000          // Unix seconds → ms
+          : new Date(createdAtRaw).getTime(); // ISO string fallback
+      const ageMinutes = (Date.now() - createdAtMs) / 60_000;
+      if (ageMinutes > 5) {
+        this.logger.warn(
+          `Rejected stale Paymob webhook (age: ${ageMinutes.toFixed(1)} min)`,
+        );
+        // Return 200 so Paymob does not keep retrying a legitimately old event.
+        return { received: true };
+      }
+    }
+
     const specialReference =
       txObj.special_reference || txObj.order?.merchant_order_id;
     if (!specialReference) {
@@ -156,11 +230,21 @@ export class SubscriptionsService {
       .findById(specialReference)
       .catch(() => null);
     if (!transaction) {
-      this.logger.warn(`No local transaction for reference ${specialReference}`);
+      this.logger.warn(
+        `No local transaction for reference ${specialReference}`,
+      );
       return { received: true };
     }
 
     const incomingTxId = txObj.id?.toString();
+
+    if (transaction.status === TransactionStatus.CANCELLED) {
+      this.logger.warn(
+        `Webhook received for CANCELLED transaction ${specialReference} — ignoring`,
+      );
+      return { received: true };
+    }
+
     if (
       transaction.paymobTransactionId &&
       transaction.paymobTransactionId === incomingTxId
@@ -176,7 +260,18 @@ export class SubscriptionsService {
     if (!success) {
       transaction.failureReason = txObj.data?.message || 'Payment declined';
     }
-    await transaction.save();
+
+    try {
+      await transaction.save();
+    } catch (err: any) {
+      if (err?.code === 11000) {
+        this.logger.warn(
+          `Duplicate webhook delivery for paymobTransactionId ${incomingTxId} — ignoring`,
+        );
+        return { received: true };
+      }
+      throw err;
+    }
 
     const subscription = await this.subscriptionModel.findById(
       transaction.subscriptionId,
@@ -187,11 +282,12 @@ export class SubscriptionsService {
       const cardToken = this.paymobService.extractCardToken(txObj);
       const subType: string | undefined = txObj.source_data?.sub_type;
       subscription.paymentMethod = {
-        type: subType === 'Wallet'
-          ? 'wallet'
-          : subType?.toLowerCase().includes('apple')
-            ? 'apple_pay'
-            : 'card',
+        type:
+          subType === 'Wallet'
+            ? 'wallet'
+            : subType?.toLowerCase().includes('apple')
+              ? 'apple_pay'
+              : 'card',
         tokenEncrypted: cardToken
           ? encryptToken(cardToken)
           : subscription.paymentMethod?.tokenEncrypted,
@@ -202,7 +298,10 @@ export class SubscriptionsService {
 
     if (transaction.type === TransactionType.INITIAL) {
       if (success) {
-        this.activatePeriod(subscription, subscription.planDurationDaysSnapshot);
+        this.activatePeriod(
+          subscription,
+          subscription.planDurationDaysSnapshot,
+        );
       } else {
         subscription.status = SubscriptionStatus.EXPIRED; // user must retry checkout
       }
@@ -251,9 +350,7 @@ export class SubscriptionsService {
       subscription.status = SubscriptionStatus.PAST_DUE;
       const offsetDays =
         this.retryIntervalsDays[subscription.failedRenewalAttempts - 1] ?? 3;
-      subscription.nextRetryAt = new Date(
-        Date.now() + offsetDays * 86_400_000,
-      );
+      subscription.nextRetryAt = new Date(Date.now() + offsetDays * 86_400_000);
       if (!subscription.graceEndsAt) {
         subscription.graceEndsAt = new Date(
           Date.now() + this.gracePeriodDays * 86_400_000,
@@ -278,9 +375,7 @@ export class SubscriptionsService {
       subscription.userId as Types.ObjectId,
     );
     if (!user) {
-      this.logger.warn(
-        `User not found for renewal: ${subscription.userId}`,
-      );
+      this.logger.warn(`User not found for renewal: ${subscription.userId}`);
       return;
     }
 
@@ -338,7 +433,8 @@ export class SubscriptionsService {
       redirectionUrl: `${this.frontendBaseUrl}/subscribe/result`,
     });
 
-    const checkoutUrl = this.paymobService.buildUnifiedCheckoutUrl(clientSecret);
+    const checkoutUrl =
+      this.paymobService.buildUnifiedCheckoutUrl(clientSecret);
 
     subscription.status = SubscriptionStatus.PAST_DUE;
     subscription.failedRenewalAttempts += 1;
@@ -421,15 +517,16 @@ export class SubscriptionsService {
     }
 
     const hasAccess = await this.isUserSubscribed(userId);
-    return { message: 'Subscription fetched successfully', subscription, hasAccess };
+    return {
+      message: 'Subscription fetched successfully',
+      subscription,
+      hasAccess,
+    };
   }
 
   // ─────────────────────── Content gating ───────────────────────
 
-  /**
-   * Returns true if the user has an active or grace-period subscription.
-   * Used by Projects, Episodes, and Reels to gate premium content.
-   */
+  // Check if user has an active or grace-period subscription.
   async isUserSubscribed(userId: string | undefined): Promise<boolean> {
     if (!userId) return false;
     const sub = await this.subscriptionModel
@@ -448,18 +545,12 @@ export class SubscriptionsService {
     return !!sub.graceEndsAt && sub.graceEndsAt > new Date();
   }
 
-  /**
-   * Content is freely accessible to everyone if it is at least FREE_ACCESS_AFTER_DAYS
-   * old (Story 1). Otherwise only subscribers can access it (Story 2).
-   *
-   * @param userId  - undefined means unauthenticated / not subscribed
-   * @param releaseDate - the date the content was published/created
-   */
+  // Check if user can access content based on release date and subscription status
   async canAccessContent(
     userId: string | undefined,
     releaseDate: Date | undefined,
   ): Promise<boolean> {
-    if (!releaseDate) return true; // no release date → always accessible
+    if (!releaseDate) return this.isUserSubscribed(userId);
     const ageInDays =
       (Date.now() - new Date(releaseDate).getTime()) / 86_400_000;
     if (ageInDays >= this.freeAccessAfterDays) return true; // old enough → free
@@ -522,7 +613,10 @@ export class SubscriptionsService {
     );
     if (!user) throw new NotFoundException('User not found');
 
-    let subscription = await this.subscriptionModel.findOne({
+    // If user already has an active, past-due, or pending subscription,
+    // expire it cleanly first to preserve its history, snapshot, and payment method,
+    // while ensuring compliance with the unique active subscription DB index.
+    const existingSubscription = await this.subscriptionModel.findOne({
       userId: new Types.ObjectId(dto.userId),
       status: {
         $in: [
@@ -532,20 +626,25 @@ export class SubscriptionsService {
         ],
       },
     });
-    if (!subscription) {
-      subscription = new this.subscriptionModel({
-        userId: new Types.ObjectId(dto.userId),
-      });
+    if (existingSubscription) {
+      existingSubscription.status = SubscriptionStatus.EXPIRED;
+      existingSubscription.autoRenew = false;
+      existingSubscription.cancelledAt = new Date();
+      await existingSubscription.save();
     }
 
-    subscription.planId = plan._id as Types.ObjectId;
-    subscription.planCode = plan.code;
-    subscription.planName = plan.name;
-    subscription.planPriceCentsSnapshot = plan.priceCents;
-    subscription.planVatPercentSnapshot = plan.vatPercent;
-    subscription.planTotalCentsSnapshot = plan.totalCents;
-    subscription.planDurationDaysSnapshot = plan.durationDays;
-    subscription.autoRenew = false; // manual grants don't auto-charge
+    const subscription = new this.subscriptionModel({
+      userId: new Types.ObjectId(dto.userId),
+      planId: plan._id as Types.ObjectId,
+      planCode: plan.code,
+      planName: plan.name,
+      planPriceCentsSnapshot: plan.priceCents,
+      planVatPercentSnapshot: plan.vatPercent,
+      planTotalCentsSnapshot: plan.totalCents,
+      planDurationDaysSnapshot: plan.durationDays,
+      autoRenew: false, // manual grants don't auto-charge
+    });
+
     this.activatePeriod(subscription, plan.durationDays);
     await subscription.save();
 
@@ -573,7 +672,9 @@ export class SubscriptionsService {
   }
 
   private buildBillingData(user: any) {
-    const [firstName, ...rest] = (user.username || 'Orientation User').split(' ');
+    const [firstName, ...rest] = (user.username || 'Orientation User').split(
+      ' ',
+    );
     return {
       first_name: firstName || 'Orientation',
       last_name: rest.join(' ') || 'User',

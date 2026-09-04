@@ -113,7 +113,13 @@ export class EpisodeService {
       createdAt,
     );
 
-    return { ...episode.toObject(), hasAccess };
+    const episodeObj: any = episode.toObject();
+    if (!hasAccess) {
+      delete episodeObj.episodeUrl;
+      delete episodeObj.s3Key;
+    }
+
+    return { ...episodeObj, hasAccess };
   }
 
   // Update episode details and replace files on S3 if provided

@@ -130,6 +130,19 @@ export class ProjectsController {
   }
 
   // @Accessible by All
+  // @Description Get all free projects (older than 30 days)
+  @Public()
+  @Get('free')
+  findFreeProjects(
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ) {
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const pageNum = page ? parseInt(page, 10) : 1;
+    return this.projectsService.findFree(limitNum, pageNum);
+  }
+
+  // @Accessible by All
   // @Description Get top 10 projects
   @Public()
   @Get('top10')

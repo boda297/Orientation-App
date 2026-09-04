@@ -13,6 +13,14 @@ export class HTTPLoggerMiddleware implements NestMiddleware {
       const { statusCode } = res;
       const duration = Date.now() - startTime;
 
+      // Mask sensitive query parameters before logging.
+      // `hmac` is Paymob's per-transaction signature — logging it raw would
+      // allow anyone with log access to replay a captured webhook payload.
+      const safeUrl = originalUrl.replace(
+        /([?&]hmac=)[^&]*/gi,
+        '$1***',
+      );
+
       let bodyLog = '';
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && body && Object.keys(body).length > 0) {
         // Sanitize sensitive fields
@@ -28,7 +36,7 @@ export class HTTPLoggerMiddleware implements NestMiddleware {
         bodyLog = ` | Body: ${truncated}`;
       }
 
-      const logMessage = `[${method}] ${originalUrl} ${statusCode} - ${duration}ms${bodyLog}`;
+      const logMessage = `[${method}] ${safeUrl} ${statusCode} - ${duration}ms${bodyLog}`;
 
       if (statusCode >= 500) {
         this.logger.error(logMessage);
@@ -42,3 +50,4 @@ export class HTTPLoggerMiddleware implements NestMiddleware {
     next();
   }
 }
+
