@@ -486,9 +486,9 @@ string; // "Hello World!"
 
 ### PATCH `/users/:id`
 
-**Description**: Update a user (Admin)
-**Authentication**: Required (`AuthGuard`, `RolesGuard`)
-**Required Role**: `SUPERADMIN` or `ADMIN`
+**Description**: Update a user's data (including password, role, email, etc.) by Superadmin  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -497,18 +497,115 @@ string; // "Hello World!"
 }
 ```
 
-**Request Body** (`UpdateUserDto` - all fields optional):
+**Request Body** (`UpdateUserByAdminDto` - all fields optional, at least one required):
 
 ```typescript
 {
   username?: string;
   email?: string;
   phoneNumber?: string;
-  password?: string;  // 8-20 characters with complexity requirements
+  password?: string;     // 8-20 characters (hashes with bcrypt, invalidates active sessions)
+  newPassword?: string;  // Alias for password
+  role?: 'user' | 'admin' | 'developer' | 'superadmin';
+  isEmailVerified?: boolean;
 }
 ```
 
-**Response**: Updated user object
+**Response**:
+
+```typescript
+{
+  message: string; // "User updated successfully"
+  user: {
+    _id: string;
+    username: string;
+    email: string;
+    phoneNumber?: string;
+    role: string;
+    isEmailVerified: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }
+}
+```
+
+---
+
+### PATCH `/users/:id/password`
+
+**Description**: Update or reset a user's password by Superadmin  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Request Body** (`UpdateUserByAdminDto`):
+
+```typescript
+{
+  password: string; // 8-20 characters
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "User updated successfully"
+  user: {
+    _id: string;
+    username: string;
+    email: string;
+    phoneNumber?: string;
+    role: string;
+    isEmailVerified: boolean;
+    createdAt: string;
+    updatedAt: string;
+  }
+}
+```
+
+---
+
+### PATCH `/users/:id/role`
+
+**Description**: Update a user's role by Superadmin  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
+**Route Parameters** (`MongoIdDto`):
+
+```typescript
+{
+  id: string; // Valid MongoDB ObjectId (required)
+}
+```
+
+**Request Body** (`UpdateUserRoleDto`):
+
+```typescript
+{
+  role: 'user' | 'admin' | 'developer' | 'superadmin'; // required
+}
+```
+
+**Response**:
+
+```typescript
+{
+  message: string; // "User updated successfully"
+  user: {
+    _id: string;
+    username: string;
+    email: string;
+    role: string;
+  }
+}
+```
 
 ---
 

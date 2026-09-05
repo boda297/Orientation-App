@@ -11,6 +11,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
 import { CreateUserByAdminDto } from './dto/createUserByAdmin.dto';
+import { UpdateUserRoleDto } from './dto/updateUserRole.dto';
 
 @Injectable()
 export class UsersService {
@@ -381,13 +382,114 @@ export class UsersService {
     }
   }
 
-  // Update user role only by super admin
-  async updateUserRole(id: Types.ObjectId, updateUserDto: UpdateUserByAdminDto) {
+  // Update user by Superadmin (supports all user fields including password)
+  async updateUserByAdmin(
+    id: Types.ObjectId,
+    updateUserDto: UpdateUserByAdminDto,
+  ) {
     try {
-      const user = await this.userModel.findByIdAndUpdate(id, updateUserDto, {
-        new: true,
-        runValidators: true,
-      }).select('_id email username role');
+      // Check if user exists
+      const existingUser = await this.userModel.findById(id);
+      if (!existingUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      // Check email uniqueness if email is changing
+      if (
+        updateUserDto.email &&
+        updateUserDto.email.toLowerCase() !== existingUser.email.toLowerCase()
+      ) {
+        const emailExists = await this.userModel.findOne({
+          email: updateUserDto.email.toLowerCase(),
+          _id: { $ne: id },
+        });
+        if (emailExists) {
+          throw new BadRequestException('Email already exists');
+        }
+      }
+
+      // Check username uniqueness if username is changing
+      if (
+        updateUserDto.username &&
+        updateUserDto.username !== existingUser.username
+      ) {
+        const usernameExists = await this.userModel.findOne({
+          username: updateUserDto.username,
+          _id: { $ne: id },
+        });
+        if (usernameExists) {
+          throw new BadRequestException('Username already exists');
+        }
+      }
+
+      const updateData: Record<string, any> = {};
+
+      if (updateUserDto.username !== undefined) {
+        updateData.username = updateUserDto.username;
+      }
+      if (updateUserDto.email !== undefined) {
+        updateData.email = updateUserDto.email.toLowerCase();
+      }
+      if (updateUserDto.phoneNumber !== undefined) {
+        updateData.phoneNumber = updateUserDto.phoneNumber;
+      }
+      if (updateUserDto.role !== undefined) {
+        updateData.role = updateUserDto.role;
+      }
+      if (updateUserDto.isEmailVerified !== undefined) {
+        updateData.isEmailVerified = updateUserDto.isEmailVerified;
+      }
+
+      // Handle password update
+      const plainPassword =
+        updateUserDto.password || updateUserDto.newPassword;
+      if (plainPassword) {
+        updateData.password = await bcrypt.hash(plainPassword, 10);
+        updateData.hashedRefreshToken = null;
+        updateData.passwordResetOTP = null;
+        updateData.passwordResetOTPExpires = null;
+        updateData.isPasswordResetVerified = false;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        throw new BadRequestException(
+          'At least one field must be provided to update',
+        );
+      }
+
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(id, updateData, {
+          new: true,
+          runValidators: true,
+        })
+        .select(
+          '_id email username phoneNumber role isEmailVerified createdAt updatedAt',
+        );
+
+      return {
+        message: 'User updated successfully',
+        user: updatedUser,
+      };
+    } catch (error) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      throw new BadRequestException(error.message);
+    }
+  }
+
+  // Update user role only by super admin
+  async updateUserRole(id: Types.ObjectId, updateUserDto: UpdateUserRoleDto) {
+    try {
+      const user = await this.userModel
+        .findByIdAndUpdate(id, updateUserDto, {
+          new: true,
+          runValidators: true,
+        })
+        .select('_id email username role');
 
       if (!user) {
         throw new NotFoundException('User not found');
