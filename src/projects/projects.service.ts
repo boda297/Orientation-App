@@ -303,18 +303,38 @@ export class ProjectsService {
   }
 
   // Find Featured Projects
-  async findFeatured(limit: number = 3) {
-    return this.projectModel
+  async findFeatured(limit: number = 3, userId?: string): Promise<any[]> {
+    const projects = await this.projectModel
       .find({ deletedAt: null, featured: true })
       .select(
-        '_id title location status developer slug heroVideoUrl logoUrl published',
+        '_id title location status developer slug heroVideoUrl logoUrl published publishedAt createdAt projectThumbnailUrl',
       )
       .limit(limit)
+      .lean()
       .exec()
       .catch((error) => {
         throw new BadRequestException(error.message);
       });
 
+    const isSubscribed = await this.subscriptionsService.isUserSubscribed(userId);
+    const freeDays = this.subscriptionsService.getFreeAccessAfterDays();
+    const now = Date.now();
+
+    return projects.map((p: any) => {
+      const releaseDate = p.publishedAt || p.createdAt;
+      let isFree = false;
+      if (releaseDate) {
+        const ageInDays = (now - new Date(releaseDate).getTime()) / 86_400_000;
+        isFree = ageInDays >= freeDays;
+      }
+      const hasAccess = isFree || isSubscribed;
+
+      return {
+        ...p,
+        isFree,
+        hasAccess,
+      };
+    });
   }
 
   // Find Latest Projects except upcoming projects

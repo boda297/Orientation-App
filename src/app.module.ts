@@ -1,5 +1,4 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -18,7 +17,6 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SubscriptionModule } from './subscription/subscription.module';
 import { HTTPLoggerMiddleware } from './common/middleware/http-logger.middleware';
-import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 
 @Module({
   imports: [
@@ -27,12 +25,8 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    // ThrottlerModule: three named tiers used via @Throttle() decorators.
-    // The guard is registered as APP_GUARD below so it runs globally.
-    //
-    //  default  — 100 req / min  — general read endpoints
-    //  strict   —   5 req / min  — payment mutations (checkout, cancel, reactivate)
-    //  webhook  —  20 req / min  — unauthenticated Paymob callback (server-to-server)
+    // ThrottlerModule: tiers used on sensitive routes (auth, payments, webhooks)
+    // via CustomThrottlerGuard and @Throttle() decorators.
     ThrottlerModule.forRoot([
       {
         name: 'default',
@@ -76,13 +70,6 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
   controllers: [AppController],
   providers: [
     AppService,
-    // CustomThrottlerGuard was defined but never wired up — registering it
-    // as APP_GUARD activates rate limiting globally across all controllers.
-    // Individual endpoints override the tier via @Throttle().
-    {
-      provide: APP_GUARD,
-      useClass: CustomThrottlerGuard,
-    },
   ],
 })
 export class AppModule implements NestModule {
