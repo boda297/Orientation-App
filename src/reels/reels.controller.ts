@@ -10,6 +10,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   Req,
+  Query,
   BadRequestException,
 } from '@nestjs/common';
 import { ReelsService } from './reels.service';
@@ -67,9 +68,22 @@ export class ReelsController {
     );
   }
 
+  @Public()
+  @UseGuards(JwtAuthGuard)
   @Get()
-  findAllReel() {
-    return this.reelsService.findAllReels();
+  findAllReel(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Req() req?: any,
+  ) {
+    const userId = req?.user?.sub ?? req?.user?.userId;
+    const pageNum = page ? parseInt(page, 10) : undefined;
+    const limitNum = limit ? parseInt(limit, 10) : undefined;
+    return this.reelsService.findAllReels({
+      page: pageNum && !isNaN(pageNum) ? pageNum : undefined,
+      limit: limitNum && !isNaN(limitNum) ? limitNum : undefined,
+      userId,
+    });
   }
 
   @Get('saved')
@@ -78,12 +92,10 @@ export class ReelsController {
     return this.reelsService.getSavedReelsByUser(req.user.sub);
   }
 
-  // Public — guests get hasAccess:false for new reels, subscribers get hasAccess:true
   @Public()
   @Get(':id')
-  findOneReel(@Param() params: MongoIdDto, @Req() req: any) {
-    const userId: string | undefined = req.user?.sub ?? req.user?.userId;
-    return this.reelsService.findOneReel(params.id, userId);
+  findOneReel(@Param() params: MongoIdDto) {
+    return this.reelsService.findOneReel(params.id);
   }
 
 
