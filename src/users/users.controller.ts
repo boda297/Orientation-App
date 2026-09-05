@@ -13,6 +13,7 @@ import {
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserByAdminDto } from './dto/updateUserByAdmin.dto';
+import { UpdateUserRoleDto } from './dto/updateUserRole.dto';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import { Role } from '../auth/enum/roles.enum';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -96,12 +97,39 @@ export class UsersController {
   }
 
   // @access : Accessible by Superadmin only
+  // @description : Update user by ID (supports all fields including password)
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN)
+  updateUserByAdmin(
+    @Param() params: MongoIdDto,
+    @Body() updateUserDto: UpdateUserByAdminDto,
+  ) {
+    return this.usersService.updateUserByAdmin(params.id, updateUserDto);
+  }
+
+  // @access : Accessible by Superadmin only
+  // @description : Update user's password by ID
+  @Patch(':id/password')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.SUPERADMIN)
+  updateUserPassword(
+    @Param() params: MongoIdDto,
+    @Body() updateUserDto: UpdateUserByAdminDto,
+  ) {
+    return this.usersService.updateUserByAdmin(params.id, updateUserDto);
+  }
+
+  // @access : Accessible by Superadmin only
   // @description : Update user's role by ID
   @Patch(':id/role')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.SUPERADMIN)
-  updateUserRole(@Param() params: MongoIdDto, @Body() updateUserDto: UpdateUserByAdminDto) {
-    return this.usersService.updateUserRole(params.id, updateUserDto);
+  updateUserRole(
+    @Param() params: MongoIdDto,
+    @Body() updateRoleDto: UpdateUserRoleDto,
+  ) {
+    return this.usersService.updateUserRole(params.id, updateRoleDto);
   }
 
   // @access : Accessible by Superadmin only
