@@ -26,12 +26,15 @@ import { GoogleMobileDto } from './dto/google-mobile.dto';
 import { AppleAuthGuard } from './guards/apple-auth.guard';
 import { AppleMobileDto } from './dto/apple-mobile.dto';
 
+import { CustomThrottlerGuard } from 'src/common/guards/custom-throttler.guard';
+
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
 };
 
+@UseGuards(CustomThrottlerGuard)
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

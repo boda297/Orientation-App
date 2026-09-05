@@ -105,10 +105,14 @@ export class ProjectsController {
   // @Description Get all featured projects
   @Public()
   @Get('featured')
-  findFeaturedProjects(@Query('limit') limit?: string) {
+  findFeaturedProjects(
+    @Query('limit') limit?: string,
+    @Req() req?: any,
+  ): Promise<any> {
     // max 3 projects
+    const userId: string | undefined = req?.user?.sub ?? req?.user?.userId;
     const limitNum = limit ? parseInt(limit, 10) : 3;
-    return this.projectsService.findFeatured(limitNum);
+    return this.projectsService.findFeatured(limitNum, userId);
   }
 
   // @Accessible by All

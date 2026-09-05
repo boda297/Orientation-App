@@ -21,7 +21,8 @@ import { Role } from 'src/auth/enum/roles.enum';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { MongoIdDto } from 'src/common/mongoId.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
-import { Throttle, SkipThrottle } from '@nestjs/throttler';
+import { Throttle } from '@nestjs/throttler';
+import { CustomThrottlerGuard } from 'src/common/guards/custom-throttler.guard';
 
 @Controller('subscriptions')
 export class SubscriptionsController {
@@ -30,7 +31,7 @@ export class SubscriptionsController {
   // strict: 5 req/min — payment initiation; repeated abuse would create
   // many stale Paymob intentions and inflate transaction records.
   @Post('checkout')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CustomThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   checkout(
@@ -40,7 +41,6 @@ export class SubscriptionsController {
     return this.subscriptionsService.initiateCheckout(userId, dto.planId);
   }
 
-  // default: 100 req/min — clients poll this to refresh subscription status.
   @Get('me')
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser('sub') userId: string) {
@@ -49,7 +49,7 @@ export class SubscriptionsController {
 
   // strict: 5 req/min — state-mutation; a legitimate user cancels once.
   @Patch('cancel')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CustomThrottlerGuard)
   @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   cancel(@CurrentUser('sub') userId: string) {
     return this.subscriptionsService.cancelSubscription(userId);
@@ -57,18 +57,15 @@ export class SubscriptionsController {
 
   // strict: 5 req/min — state-mutation; a legitimate user reactivates once.
   @Patch('reactivate')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, CustomThrottlerGuard)
   @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   reactivate(@CurrentUser('sub') userId: string) {
     return this.subscriptionsService.reactivateSubscription(userId);
   }
 
-  // Paymob's server-to-server callback — intentionally unauthenticated.
-  // Integrity comes solely from HMAC verification inside the service.
-  // webhook: 20 req/min — tight enough to block automated probing while
-  // allowing Paymob's legitimate retry schedule (3 retries over several minutes).
   @Public()
   @Post('webhook')
+  @UseGuards(CustomThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @Throttle({ webhook: { limit: 20, ttl: 60_000 } })
   webhook(@Body() body: any, @Query('hmac') hmac: string) {
@@ -76,16 +73,11 @@ export class SubscriptionsController {
   }
 
   // ── Admin ──
-  // Admin endpoints are already behind JWT + role guards. Read-only admin
-  // queries may legitimately page through large datasets, so throttling is
-  // skipped at the endpoint level — the global default still applies to
-  // the IP but not per-authenticated-user key.
 
   // Admin endpoint to get all subscriptions.
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
-  @SkipThrottle()
   findAll(@Query() query: QuerySubscriptionDto) {
     return this.subscriptionsService.findAllForAdmin(query);
   }
@@ -94,14 +86,13 @@ export class SubscriptionsController {
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
-  @SkipThrottle()
   findOne(@Param() params: MongoIdDto) {
     return this.subscriptionsService.findOneForAdmin(params.id.toString());
   }
 
   // Admin endpoint to force-cancel a subscription.
   @Patch(':id/force-cancel')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CustomThrottlerGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   forceCancel(@Param() params: MongoIdDto) {
@@ -110,7 +101,7 @@ export class SubscriptionsController {
 
   // Admin endpoint to grant a subscription to a user (e.g., for offline payment or testing).
   @Post('grant')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard, CustomThrottlerGuard)
   @Roles(Role.ADMIN, Role.SUPERADMIN)
   @Throttle({ strict: { limit: 5, ttl: 60_000 } })
   grant(
