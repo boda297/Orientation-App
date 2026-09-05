@@ -643,8 +643,8 @@ Array<{
 
 ### GET `/projects/:id`
 
-**Description**: Get a project by ID. Returns project with populated `developer`, `episodes`, `reels`, `inventory`, and `pdf` fields. Automatically increments view count and recalculates trending score.  
-**Authentication**: None  
+**Description**: Get a project by ID. Returns project with populated `developer`, `episodes`, `reels`, `inventory`, and `pdf` fields. Automatically increments view count and evaluates content gating.  
+**Authentication**: Optional (`@Public()` - evaluates active subscription if JWT is passed via cookie or `Authorization` header)  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -653,7 +653,11 @@ Array<{
 }
 ```
 
-**Response**: Project object with populated references:
+**Content Gating**:
+- If the project is free (age >= 30 days) or the authenticated user has an active subscription, `hasAccess: true` is returned with full media access.
+- If the user does not have access (`hasAccess: false`), `heroVideoUrl` is omitted and nested items (`episodes`, `reels`, `inventory`, `pdf`) are returned with `locked: true`.
+
+**Response**: Project object with populated references and access state:
 
 ```typescript
 {
@@ -665,49 +669,56 @@ Array<{
   status: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
   developer: { _id: string; name: string; logoUrl?: string };
   script: string;
-  episodes: Array<{ _id: string; title: string; thumbnail?: string; episodeUrl: string; duration?: string; episodeOrder: string }>;
-  reels: Array<{ _id: string; videoUrl: string; thumbnail?: string; title: string }>;
-  inventory?: { _id: string; title: string; inventoryUrl: string };
-  pdf: Array<{ _id: string; title: string; pdfUrl: string }>;
+  episodes: Array<{ _id: string; title: string; thumbnail?: string; episodeUrl?: string; duration?: string; episodeOrder: string; locked?: boolean }>;
+  reels: Array<{ _id: string; videoUrl?: string; thumbnail?: string; title: string; locked?: boolean }>;
+  inventory?: { _id: string; title: string; inventoryUrl?: string; locked?: boolean };
+  pdf: Array<{ _id: string; title: string; pdfUrl?: string; locked?: boolean }>;
   projectThumbnailUrl: string;
-  heroVideoUrl: string;
+  heroVideoUrl?: string; // Omitted if hasAccess is false
   whatsappNumber?: string;
   trendingScore: number;
   saveCount: number;
   viewCount: number;
   published: boolean;
+  publishedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+  hasAccess: boolean; // Indicates whether user has full access to content
 }
 ```
 
 ---
 
-### GET `/projects/featured?limit=10`
+### GET `/projects/featured`
 
-**Description**: Get featured projects  
-**Authentication**: None  
+**Description**: Get featured projects for Hero carousel. Returns each project along with its access status (`hasAccess` and `isFree`) directly so frontend Hero does not need to make follow-up `/projects/:id` requests.  
+**Authentication**: Optional (`@Public()` - evaluates active subscription if JWT is passed via cookie or `Authorization` header)  
 **Query Parameters**:
 
 ```typescript
 {
-  limit?: string;  // Converted to number, default: 10
+  limit?: string;  // Page size limit (default: 3)
 }
 ```
 
-**Response**: Array of featured project objects:
+**Response**: Array of featured project objects with access status:
 
 ```typescript
 Array<{
   _id: string;
   title: string;
   location: string;
-  status: string;
-  developer: string;
+  status: 'PLANNING' | 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
+  developer: string; // Developer MongoDB ObjectId
   slug: string;
-  ad_url: string;
-  adUrl: string;
   heroVideoUrl: string;
+  logoUrl?: string;
+  projectThumbnailUrl: string;
+  published: boolean;
+  publishedAt?: Date;
+  createdAt: Date;
+  isFree: boolean;    // true if published/created >= 30 days ago
+  hasAccess: boolean; // true if isFree is true OR authenticated user has active subscription
 }>;
 ```
 
@@ -766,6 +777,38 @@ Array<{
   developer: string;
   published: boolean;
   projectThumbnailUrl: string;
+}>;
+```
+
+---
+
+### GET `/projects/free?limit=10&page=1`
+
+**Description**: Get all free projects (projects older than 30 days `freeAccessAfterDays`, excluding `PLANNING` status). Accessible by all users without an active subscription.  
+**Authentication**: None (Public)  
+**Query Parameters**:
+
+```typescript
+{
+  limit?: string; // Number of items per page (default: 10)
+  page?: string;  // Page number (default: 1)
+}
+```
+
+**Response**: Array of free project objects:
+
+```typescript
+Array<{
+  _id: string;
+  title: string;
+  slug: string;
+  status: 'CONSTRUCTION' | 'COMPLETED' | 'DELIVERED';
+  location: string;
+  developer: string;
+  published: boolean;
+  projectThumbnailUrl: string;
+  createdAt: Date;
+  publishedAt?: Date;
 }>;
 ```
 
@@ -1494,9 +1537,12 @@ Array<{
 
 ### GET `/reels`
 
-**Description**: Get all reels  
-**Authentication**: None  
-**Request**: None  
+**Description**: Get reels feed ranked using the TikTok-style "For You" (FYP) algorithm. Combines multi-factor scoring (views + 5x saves), freshness exploration bonus for new uploads, recency decay, and weighted random sampling (Efraimidis & Spirakis WRS) with anti-clustering diversity so consecutive reels from the same project are avoided. Returns a randomized, non-deterministic feed prioritizing high-score content.  
+**Authentication**: Optional (`@Public()` with `JwtAuthGuard` - personalizes feed if authenticated)  
+**Query Parameters**:
+- `page`: number (optional, default: 1)
+- `limit`: number (optional, for infinite scrolling pagination)
+
 **Response**: 
 
 ```typescript
@@ -1505,13 +1551,15 @@ Array<{
   title: string;
   videoUrl: string;           // S3 CloudFront URL
   thumbnail: string;          // S3 CloudFront URL
-  projectId: string | Project; // May be populated
-  developerId: string | Developer; // May be populated
   viewCount: number;
-  saveCount: number;
-  s3Key: string;
   createdAt: Date;
-  updatedAt: Date;
+  developerId: string;        // MongoDB ObjectId
+  projectId: {
+    _id: string;
+    title: string;            // Project name
+    logoUrl?: string;         // Project logo URL
+    whatsappNumber?: string;  // Project WhatsApp contact number
+  };
 }>
 ```
 
@@ -1533,12 +1581,7 @@ Array<{
   reels: Array<{
     _id: string;
     title: string;
-    videoUrl: string;
     thumbnail: string;
-    projectId: string | Project;
-    developerId: string | Developer;
-    viewCount: number;
-    saveCount: number;
   }>;
 }
 ```
@@ -1548,7 +1591,7 @@ Array<{
 ### GET `/reels/:id`
 
 **Description**: Get a single reel by ID  
-**Authentication**: None  
+**Authentication**: None (Public)  
 **Route Parameters** (`MongoIdDto`):
 
 ```typescript
@@ -1561,17 +1604,24 @@ Array<{
 
 ```typescript
 {
-  _id: string;
-  title: string;
-  videoUrl: string;           // S3 CloudFront URL
-  thumbnail: string;          // S3 CloudFront URL
-  projectId: string | Project; // May be populated
-  developerId: string | Developer; // May be populated
-  viewCount: number;
-  saveCount: number;
-  s3Key: string;
-  createdAt: Date;
-  updatedAt: Date;
+  message: string; // "Reel fetched successfully"
+  reel: {
+    _id: string;
+    title: string;
+    videoUrl: string;          // S3 CloudFront URL
+    thumbnail?: string;        // S3 CloudFront URL
+    developerId: string;
+    projectId: {
+      _id: string;
+      title: string;           // Project name
+      logoUrl?: string;        // Project logo URL
+      whatsappNumber?: string; // Project WhatsApp contact number
+    };
+    viewCount: number;
+    saveCount: number;
+    createdAt: Date;
+    updatedAt: Date;
+  };
 }
 ```
 
@@ -2375,154 +2425,270 @@ Tracks user progress for "Continue Watching" and allows resuming playback.
 
 ---
 
-## 12. Subscription Controller (`/subscription`)
+## 12. Subscription Plans Controller (`/subscription-plans`)
 
-Handles subscription plan creation, payment checkout with Paymob iframe generation, and secure webhook HMAC verification.
+Handles subscription plan definition, pricing tiers, and plan management.
 
-### POST `/subscription/paymob/plan`
+### GET `/subscription-plans`
 
-**Description**: Create a recurring subscription plan on Paymob  
-**Authentication**: Public (`@Public()`)  
-**Request Body** (`CreateSubscriptionPlanInput`):
+**Description**: Retrieve all active subscription plans visible to public users  
+**Authentication**: None (Public)  
+**Request**: None  
+**Response**: Array of active `SubscriptionPlan` objects:
+
+```typescript
+Array<{
+  _id: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: string; // 'EGP'
+  billingCycle: 'monthly' | 'quarterly' | 'semi-annual' | 'annual';
+  features: string[];
+  popular: boolean;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}>;
+```
+
+---
+
+### GET `/subscription-plans/admin/all`
+
+**Description**: Retrieve all subscription plans (including inactive/archived) for admin dashboard  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Request**: None  
+**Response**: Array of all `SubscriptionPlan` objects
+
+---
+
+### POST `/subscription-plans`
+
+**Description**: Create a new subscription plan  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
+**Request Body** (`CreatePlanDto`):
 
 ```typescript
 {
-  name: string;                                           // Required (e.g. "Monthly Premium")
-  amount_cents: number;                                   // Required (e.g. 10000 = 100 EGP)
-  frequency: number;                                      // Required in days (e.g. 30)
-  plan_type?: 'rent' | 'installment' | 'regular' | string; // Optional
-  webhook_url?: string;                                   // Optional
-  reminder_days?: number | string;                        // Optional
-  retrial_days?: number | string;                         // Optional
-  number_of_deductions?: number | string;                 // Optional
-  use_transaction_amount?: boolean;                       // Optional
-  is_active?: boolean;                                    // Optional (default: true)
-  integration?: number;                                   // Optional (Paymob integration ID)
-  fee?: number | string;                                  // Optional
+  name: string;                                                    // Required (e.g. "Monthly Premium")
+  description: string;                                             // Required
+  price: number;                                                   // Required in EGP (e.g. 150)
+  currency?: string;                                              // Optional (default: "EGP")
+  billingCycle: 'monthly' | 'quarterly' | 'semi-annual' | 'annual'; // Required
+  features?: string[];                                             // Optional list of plan perks
+  popular?: boolean;                                               // Optional (default: false)
+  active?: boolean;                                                // Optional (default: true)
 }
 ```
 
-**Response**: Paymob plan creation response object containing plan `id`, `name`, `amount_cents`, etc.
+**Response**: Created `SubscriptionPlan` object
 
 ---
 
-### GET `/subscription/paymob/plans`
+### PATCH `/subscription-plans/:id`
 
-**Description**: Retrieve all registered subscription plans from Paymob  
-**Authentication**: Public (`@Public()`)  
-**Request**: None  
-**Response**: Array of Paymob subscription plan objects
+**Description**: Update an existing subscription plan by ID  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
+**Route Parameters** (`MongoIdDto`): `id` (MongoDB ObjectId)  
+**Request Body** (`UpdatePlanDto`): Partial `CreatePlanDto`  
+**Response**: Updated `SubscriptionPlan` object
 
 ---
 
-### POST `/subscription/paymob/checkout`
+### DELETE `/subscription-plans/:id`
 
-**Description**: Initiates checkout, creates a Paymob order and payment key, and generates an embeddable Paymob iframe URL  
-**Authentication**: Public (`@Public()`)  
-**Request Body**:
+**Description**: Archive / soft-delete a subscription plan by ID  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `SUPERADMIN`  
+**Route Parameters** (`MongoIdDto`): `id` (MongoDB ObjectId)  
+**Response**: Deletion confirmation message
+
+---
+
+## 13. Subscriptions Controller (`/subscriptions`)
+
+Handles payment checkout via Paymob Intention API, subscription lifecycle management, content access status, and secure webhook processing.
+
+### POST `/subscriptions/checkout`
+
+**Description**: Initiates checkout for a subscription plan via Paymob Intention API. Creates an intention on Paymob and returns unified checkout details.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Rate Limit**: 5 requests / 60 seconds (`CustomThrottlerGuard`)  
+**Request Body** (`SubscribeDto`):
 
 ```typescript
 {
-  amountCents: number;            // Required amount in cents (e.g. 5000 = 50.00 EGP)
-  merchantOrderId?: string;       // Optional merchant-side reference
-  billingData?: {                 // Optional customer billing information
-    first_name: string;
-    last_name: string;
-    email: string;
-    phone_number: string;
-    apartment?: string;
-    floor?: string;
-    street?: string;
-    building?: string;
-    shipping_method?: string;
-    postal_code?: string;
-    city?: string;
-    country?: string;
-    state?: string;
+  planId: string; // Valid MongoDB ObjectId of the SubscriptionPlan (required)
+}
+```
+
+**Response**:
+
+```typescript
+{
+  clientSecret: string;       // Paymob unified intention client secret
+  publicKey: string;          // Paymob public key
+  unifiedCheckoutUrl: string; // Direct checkout URL for web / mobile WebView
+  transactionId: string;      // Internal PaymentTransaction MongoDB ObjectId
+}
+```
+
+---
+
+### GET `/subscriptions/me`
+
+**Description**: Retrieve the authenticated user's current subscription status and access entitlement  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Request**: None  
+**Response**:
+
+```typescript
+{
+  hasSubscription: boolean;
+  subscription?: {
+    _id: string;
+    planId: {
+      _id: string;
+      name: string;
+      price: number;
+      billingCycle: string;
+    };
+    status: 'active' | 'past_due' | 'unpaid' | 'cancelled' | 'expired';
+    currentPeriodStart: Date;
+    currentPeriodEnd: Date;
+    autoRenew: boolean;
+    cancelAtPeriodEnd: boolean;
+    paymentMethodType?: string;
+    inGracePeriod?: boolean;
   };
 }
 ```
 
+---
+
+### PATCH `/subscriptions/cancel`
+
+**Description**: Turn off auto-renew. The user retains full premium access until `currentPeriodEnd`.  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Rate Limit**: 5 requests / 60 seconds (`CustomThrottlerGuard`)  
+**Request**: None  
 **Response**:
 
 ```typescript
 {
-  orderId: number;                  // Paymob numeric order ID
-  merchantOrderId: string;          // Generated unique merchant order identifier
-  paymentToken: string;             // Paymob payment key token
-  iframeUrl: string;                // Complete URL to embed in web/mobile iframe for card payment
+  message: string;     // "Auto-renew turned off. You keep access until the end of the current period."
+  accessUntil: Date;   // currentPeriodEnd timestamp
 }
 ```
 
 ---
 
-### POST `/subscription/paymob/webhook`
+### PATCH `/subscriptions/reactivate`
 
-**Description**: Webhook endpoint for Paymob transaction notifications. Verifies the SHA512 HMAC signature using configured `PAYMOB_HMAC_SECRET`.  
-**Authentication**: Public (`@Public()`)  
+**Description**: Reactivate a subscription that was marked to cancel at the end of the current period  
+**Authentication**: Required (`JwtAuthGuard`)  
+**Rate Limit**: 5 requests / 60 seconds (`CustomThrottlerGuard`)  
+**Request**: None  
+**Response**:
+
+```typescript
+{
+  message: string;     // "Subscription reactivated. Auto-renew is back on."
+  subscription: any;
+}
+```
+
+---
+
+### POST `/subscriptions/webhook`
+
+**Description**: Paymob server-to-server transaction notification webhook. Verifies HMAC SHA512 signature and updates subscription / payment status.  
+**Authentication**: None (`@Public()` - verified via HMAC signature)  
+**Rate Limit**: 20 requests / 60 seconds (`CustomThrottlerGuard`)  
 **Query Parameters**:
-- `hmac`: string (HMAC SHA512 hash sent by Paymob in query)
+- `hmac`: string (HMAC SHA512 hash sent by Paymob)
 
-**Request Body**: Paymob transaction callback payload object  
+**Request Body**: Paymob transaction callback object  
 **Response**:
 
 ```typescript
 {
-  success: boolean;  // true
-  hmacValid: boolean; // true if HMAC matches, false otherwise
+  received: boolean; // true
 }
 ```
 
 ---
 
-### POST `/subscription`
+### GET `/subscriptions`
 
-**Description**: Create a new subscription record  
-**Authentication**: Required (`JwtAuthGuard`)  
-**Request Body** (`CreateSubscriptionDto`)  
-**Response**: Subscription record
+**Description**: Admin endpoint to list all subscriptions with pagination and optional filters  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Query Parameters** (`QuerySubscriptionDto`):
 
----
+```typescript
+{
+  userId?: string;  // Filter by user ObjectId
+  status?: string;  // Filter by status ('active' | 'past_due' | 'unpaid' | 'cancelled' | 'expired')
+  limit?: number;   // Default: 20
+  page?: number;    // Default: 1
+}
+```
 
-### GET `/subscription`
+**Response**:
 
-**Description**: Retrieve all subscriptions  
-**Authentication**: Required (`JwtAuthGuard`)  
-**Response**: Array of subscription records
-
----
-
-### GET `/subscription/:id`
-
-**Description**: Retrieve a single subscription by ID  
-**Authentication**: Required (`JwtAuthGuard`)  
-**Route Parameters**:
-- `id`: number
-
-**Response**: Subscription record
-
----
-
-### PATCH `/subscription/:id`
-
-**Description**: Update a subscription by ID  
-**Authentication**: Required (`JwtAuthGuard`)  
-**Route Parameters**:
-- `id`: number
-
-**Request Body** (`UpdateSubscriptionDto`)  
-**Response**: Updated subscription record
+```typescript
+{
+  items: Array<any>;
+  total: number;
+}
+```
 
 ---
 
-### DELETE `/subscription/:id`
+### GET `/subscriptions/:id`
 
-**Description**: Remove a subscription by ID  
-**Authentication**: Required (`JwtAuthGuard`)  
-**Route Parameters**:
-- `id`: number
+**Description**: Admin endpoint to get a single subscription by ID  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Route Parameters** (`MongoIdDto`): `id` (MongoDB ObjectId)  
+**Response**: Subscription object with user details
 
-**Response**: Deletion confirmation
+---
+
+### PATCH `/subscriptions/:id/force-cancel`
+
+**Description**: Admin endpoint to force-cancel an active subscription immediately  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Rate Limit**: 5 requests / 60 seconds (`CustomThrottlerGuard`)  
+**Route Parameters** (`MongoIdDto`): `id` (MongoDB ObjectId)  
+**Response**: Confirmation message and updated subscription
+
+---
+
+### POST `/subscriptions/grant`
+
+**Description**: Admin endpoint to manually grant a subscription to a user (e.g., for offline payment, VIP, or testing)  
+**Authentication**: Required (`JwtAuthGuard`, `RolesGuard`)  
+**Required Role**: `ADMIN` or `SUPERADMIN`  
+**Rate Limit**: 5 requests / 60 seconds (`CustomThrottlerGuard`)  
+**Request Body** (`GrantSubscriptionDto`):
+
+```typescript
+{
+  userId: string;        // MongoDB ObjectId of the user (required)
+  planId: string;        // MongoDB ObjectId of the plan (required)
+  durationDays?: number; // Optional duration in days (default: plan cycle duration)
+  reason?: string;       // Optional reason or reference note
+}
+```
+
+**Response**: Granted subscription object
 
 ---
 
@@ -2673,14 +2839,43 @@ Handles subscription plan creation, payment checkout with Paymob iframe generati
 }
 ```
 
-### Paymob Checkout Session Entity
+### SubscriptionPlan Entity
 
 ```typescript
 {
-  orderId: number;
-  merchantOrderId: string;
-  paymentToken: string;
-  iframeUrl: string;
+  _id: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: string;
+  billingCycle: 'monthly' | 'quarterly' | 'semi-annual' | 'annual';
+  features: string[];
+  popular: boolean;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Subscription Entity
+
+```typescript
+{
+  _id: string;
+  userId: string;
+  planId: string | SubscriptionPlan;
+  status: 'active' | 'past_due' | 'unpaid' | 'cancelled' | 'expired';
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  autoRenew: boolean;
+  cancelAtPeriodEnd: boolean;
+  cancelledAt?: Date;
+  graceEndsAt?: Date;
+  failedRenewalAttempts: number;
+  paymentMethodType?: string;
+  lastPaymentTransactionId?: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 ```
 
@@ -2694,7 +2889,7 @@ Most routes require JWT authentication. Include the token in the Authorization h
 Authorization: Bearer <jwt_token>
 ```
 
-The token is obtained from `/auth/login` or `/auth/register` endpoints.
+Alternatively, authentication tokens can be passed via HTTP-only cookies (`accessToken` and `refreshToken`).
 
 ---
 
@@ -2707,15 +2902,21 @@ All endpoints may return standard HTTP error responses:
 - `403 Forbidden`: Insufficient permissions (role-based)
 - `404 Not Found`: Resource not found
 - `409 Conflict`: Resource conflict (e.g., user already exists)
+- `429 Too Many Requests`: Rate limit exceeded on sensitive routes
 - `500 Internal Server Error`: Server error
 
 ---
 
 ## Notes
 
-1. All MongoDB ObjectIds must be valid 24-character hexadecimal strings
-2. File uploads use `multipart/form-data` content type
-3. Query parameters and route parameters are automatically validated
-4. Dates are returned in ISO 8601 format
-5. Pagination defaults: `limit=10`, `page=1`
-6. Some routes marked as "TODO" are not yet fully implemented
+1. All MongoDB ObjectIds must be valid 24-character hexadecimal strings.
+2. File uploads use `multipart/form-data` content type.
+3. Query parameters and route parameters are automatically validated.
+4. Dates are returned in ISO 8601 format.
+5. Pagination defaults: `limit=10`, `page=1`.
+6. **Rate Limiting Policy**: Global rate limiting is disabled across general browsing routes. Rate limiting is enforced selectively on sensitive endpoints using `CustomThrottlerGuard`:
+   - Authentication (`/auth/*`): 3 to 10 requests / 60 seconds.
+   - Payment mutations (`/subscriptions/checkout`, `cancel`, `reactivate`, `force-cancel`, `grant`): 5 requests / 60 seconds.
+   - Paymob callbacks (`/subscriptions/webhook`): 20 requests / 60 seconds.
+7. **Content Gating**: Content older than 30 days (`freeAccessAfterDays`) is freely accessible. Newer content requires an active subscription; for unsubscribed users, `/projects/:id` returns `hasAccess: false`, strips `heroVideoUrl`, and locks nested media. Hero carousel data `/projects/featured` returns `hasAccess` and `isFree` directly.
+

@@ -13,7 +13,6 @@ import { S3Service } from 'src/s3/s3.service';
 import { ProjectsService } from 'src/projects/projects.service';
 import { DeveloperService } from 'src/developer/developer.service';
 import { UsersService } from 'src/users/users.service';
-import { SubscriptionsService } from 'src/subscription/subscription.service';
 
 @Injectable()
 export class ReelsService {
@@ -24,7 +23,6 @@ export class ReelsService {
     private readonly developerService: DeveloperService,
     private readonly usersService: UsersService,
     private readonly s3Service: S3Service,
-    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /*
@@ -85,40 +83,176 @@ export class ReelsService {
     };
   }
 
-  // Find all reels
-  async findAllReels() {
-    return this.reelModel
+  // Find all reels (TikTok FYP Recommendation Feed Algorithm)
+  async findAllReels(options?: {
+    page?: number;
+    limit?: number;
+    userId?: Types.ObjectId | string;
+  }) {
+    // 1. Fetch candidate reels with necessary fields for scoring & response
+    const reels = await this.reelModel
       .find()
-      .select('title videoUrl thumbnail viewCount createdAt projectId')
-      .sort({ createdAt: -1 });
+      .select(
+        'title videoUrl thumbnail viewCount saveCount createdAt projectId developerId',
+      )
+      .populate('projectId', 'title logoUrl whatsappNumber')
+      .lean();
+
+    if (!reels || reels.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+
+    // Retrieve saved reels set for personalization if user is logged in
+    let savedReelIdsSet: Set<string> | undefined;
+    if (options?.userId && Types.ObjectId.isValid(options.userId)) {
+      try {
+        const userObjId = new Types.ObjectId(options.userId);
+        const savedIds = await this.usersService.getSavedReelIds(userObjId);
+        savedReelIdsSet = new Set(savedIds.map((id) => id.toString()));
+      } catch {
+        // Fallback: ignore personalization if user not found
+      }
+    }
+
+    // 2. Score each reel and assign a Weighted Random Sampling rankKey (Efraimidis & Spirakis)
+    const scoredReels = reels.map((reel) => {
+      const score = this.calculateReelScore(reel, now, savedReelIdsSet);
+      // Square root scaling compresses extreme outliers while maintaining high-score priority
+      const weight = Math.pow(Math.max(score, 0.1), 0.5);
+      // rankKey = u^(1 / weight), where u ~ Uniform(0, 1)
+      const u = Math.max(Math.random(), 0.00001);
+      const rankKey = Math.pow(u, 1 / weight);
+      return { reel, rankKey };
+    });
+
+    // 3. Sort descending by rankKey (stochastic priority order)
+    scoredReels.sort((a, b) => b.rankKey - a.rankKey);
+
+    let rankedReels = scoredReels.map((item) => item.reel);
+
+    // 4. Anti-clustering diversity filter (avoid consecutive reels from same project)
+    rankedReels = this.applyDiversityFilter(rankedReels);
+
+    // 5. Pagination if requested
+    if (options?.limit && options.limit > 0) {
+      const page = Math.max(1, options.page || 1);
+      const limit = options.limit;
+      const start = (page - 1) * limit;
+      rankedReels = rankedReels.slice(start, start + limit);
+    }
+
+    // 6. Return formatted reels with exact requested fields
+    return rankedReels.map((reel: any) => ({
+      _id: reel._id,
+      title: reel.title,
+      videoUrl: reel.videoUrl,
+      thumbnail: reel.thumbnail,
+      viewCount: reel.viewCount ?? 0,
+      createdAt: reel.createdAt,
+      developerId: reel.developerId,
+      projectId: reel.projectId,
+    }));
+  }
+
+  /**
+   * Calculates dynamic recommendation score for a reel (TikTok FYP style)
+   */
+  private calculateReelScore(
+    reel: any,
+    now: number,
+    savedReelIdsSet?: Set<string>,
+  ): number {
+    const views = reel.viewCount || 0;
+    const saves = reel.saveCount || 0;
+
+    // 1. Base engagement score (saves weighted higher as strong intentional interest)
+    const baseEngagement = views * 1 + saves * 5;
+
+    // 2. Freshness & Recency time decay
+    const createdAt = reel.createdAt
+      ? new Date(reel.createdAt).getTime()
+      : reel._id?.getTimestamp
+        ? reel._id.getTimestamp().getTime()
+        : now;
+
+    const hoursSinceCreation = Math.max(0, (now - createdAt) / (1000 * 60 * 60));
+
+    // Exploration bonus for fresh content (TikTok test bucket)
+    let freshnessBonus = 0;
+    if (hoursSinceCreation <= 24) {
+      freshnessBonus = 25;
+    } else if (hoursSinceCreation <= 72) {
+      freshnessBonus = 12;
+    } else if (hoursSinceCreation <= 168) {
+      // within 7 days
+      freshnessBonus = 5;
+    }
+
+    // Time decay: smooth power decay so older content gradually yields to newer content
+    const timeDecay = Math.pow(1 + hoursSinceCreation / 48, 1.25);
+    let score = (baseEngagement + freshnessBonus + 5) / timeDecay;
+
+    // 3. User personalization (if user is authenticated)
+    if (savedReelIdsSet && reel._id) {
+      const reelIdStr = reel._id.toString();
+      if (savedReelIdsSet.has(reelIdStr)) {
+        // Already saved: slight penalty to prioritize discovering unseen content
+        score *= 0.8;
+      }
+    }
+
+    return Math.max(score, 0.1);
+  }
+
+  /**
+   * Ensures no two consecutive reels belong to the same project (Anti-Clustering)
+   */
+  private applyDiversityFilter(reels: any[]): any[] {
+    if (reels.length <= 2) return reels;
+
+    const result = [...reels];
+    for (let i = 1; i < result.length - 1; i++) {
+      const currentProjId = this.extractProjectId(result[i]);
+      const prevProjId = this.extractProjectId(result[i - 1]);
+
+      if (currentProjId && prevProjId && currentProjId === prevProjId) {
+        // Look ahead up to 3 items for a reel from a different project to swap with
+        for (let j = i + 1; j < Math.min(i + 4, result.length); j++) {
+          const candidateProjId = this.extractProjectId(result[j]);
+          if (candidateProjId && candidateProjId !== prevProjId) {
+            const temp = result[i];
+            result[i] = result[j];
+            result[j] = temp;
+            break;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
+  private extractProjectId(reel: any): string | null {
+    if (!reel?.projectId) return null;
+    if (typeof reel.projectId === 'string') return reel.projectId;
+    if (reel.projectId._id) return reel.projectId._id.toString();
+    return reel.projectId.toString();
   }
 
   // Find one reel by ID
-  async findOneReel(id: Types.ObjectId, userId?: string) {
+  async findOneReel(id: Types.ObjectId) {
     const reel = await this.reelModel
       .findById(id)
-      .populate('projectId', 'title slug');
+      .populate('projectId', 'title logoUrl whatsappNumber');
     if (!reel) {
       throw new NotFoundException('Reel not found');
     }
     await this.incrementViewCount(id);
 
-    // Content gating: free after FREE_ACCESS_AFTER_DAYS from createdAt
-    const createdAt = (reel as any).createdAt as Date | undefined;
-    const hasAccess = await this.subscriptionsService.canAccessContent(
-      userId,
-      createdAt,
-    );
-
-    const reelObj: any = reel.toObject();
-    if (!hasAccess) {
-      delete reelObj.videoUrl;
-      delete reelObj.s3Key;
-    }
-
     return {
       message: 'Reel fetched successfully',
-      reel: { ...reelObj, hasAccess },
+      reel,
     };
   }
 
