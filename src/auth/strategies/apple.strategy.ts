@@ -1,6 +1,6 @@
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy, Profile } from 'passport-apple';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import appleOauthConfig from '../config/apple-oauth.config';
 import { AuthService } from '../auth.service';
@@ -92,12 +92,22 @@ export class AppleStrategy extends PassportStrategy(Strategy, 'apple') {
       }
     }
 
+    if (!appleId) {
+      throw new UnauthorizedException(
+        'Apple authorization failed: Unable to extract Apple ID from token',
+      );
+    }
+
     // 4. Validate or create user and return it directly (NestJS handles the passport callback)
     const user = await this.authService.validateAppleUser({
       email,
       username: username || 'Apple User',
       appleId,
     });
+
+    if (!user) {
+      throw new UnauthorizedException('Apple authentication failed');
+    }
 
     return user;
   }

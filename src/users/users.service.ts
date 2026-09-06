@@ -44,6 +44,7 @@ export class UsersService {
     const user = new this.userModel({
       ...userData,
       provider: userData.provider || 'google',
+      role: 'user',
     });
     return await user.save();
   }
@@ -59,13 +60,17 @@ export class UsersService {
     const user = new this.userModel({
       ...userData,
       provider: userData.provider || 'apple',
+      role: 'user',
     });
     return await user.save();
   }
 
-  // Find user by Apple ID
+  // Find user by Apple ID (with falsy guard to prevent matching on empty/undefined)
   async findByAppleId(appleId: string) {
-    return await this.userModel.findOne({ appleId });
+    if (!appleId || typeof appleId !== 'string' || appleId.trim() === '') {
+      return null;
+    }
+    return await this.userModel.findOne({ appleId: appleId.trim() });
   }
 
   // Create user by admin and skip email verification
