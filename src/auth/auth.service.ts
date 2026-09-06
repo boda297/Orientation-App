@@ -454,8 +454,14 @@ export class AuthService {
     username?: string;
     appleId: string;
   }) {
+    if (!appleUser?.appleId || typeof appleUser.appleId !== 'string' || appleUser.appleId.trim() === '') {
+      throw new BadRequestException('Valid Apple ID is required');
+    }
+
+    const cleanAppleId = appleUser.appleId.trim();
+
     // 1. Check if user already exists by appleId
-    let user = await this.usersService.findByAppleId(appleUser.appleId);
+    let user = await this.usersService.findByAppleId(cleanAppleId);
     if (user) {
       return user;
     }
@@ -465,10 +471,10 @@ export class AuthService {
       user = await this.usersService.findByEmail(appleUser.email);
       if (user) {
         await this.usersService.update(user._id, {
-          appleId: appleUser.appleId,
+          appleId: cleanAppleId,
           isEmailVerified: true,
         });
-        user.appleId = appleUser.appleId;
+        user.appleId = cleanAppleId;
         user.isEmailVerified = true;
         return user;
       }
@@ -476,13 +482,13 @@ export class AuthService {
 
     // 3. If new user, create Apple account
     const email =
-      appleUser.email || `${appleUser.appleId}@privaterelay.appleid.com`;
+      appleUser.email || `${cleanAppleId}@privaterelay.appleid.com`;
     const username = appleUser.username || 'Apple User';
 
     const newUser = await this.usersService.createAppleUser({
       email,
       username,
-      appleId: appleUser.appleId,
+      appleId: cleanAppleId,
       isEmailVerified: true,
     });
 
